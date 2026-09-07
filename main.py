@@ -51,7 +51,7 @@ class MyFirstWindow(QMainWindow):
         pass
 
     def run_game_instance(self): 
-        self.mole_closet = []
+        self.mole_closet = [] #list that contains the id of each mole, might be useful in the future
         for i in range(mole_count):
             self.mole_closet.append(f"MOLE{i}")
 
@@ -69,7 +69,25 @@ class MyFirstWindow(QMainWindow):
             self.mole_move(self.whacked_button, 
                            self.whacked_button.text()
                            )
+            self.whack_effect(True)
             self.whacked_button.setText("")
+        else:
+            self.whack_effect()
+
+    def whack_effect(self, isHit=False): #border whack effect
+        temp_file = self.whacked_button.styleSheet()
+        if isHit:
+            self.whacked_button.setStyleSheet(temp_file + 
+                                              "border: 10px solid #39fc03;")
+        else:
+            self.whacked_button.setStyleSheet(temp_file + 
+                                              "border: 9px solid #DFE0F2;")
+
+        temp_file = self.whacked_button.styleSheet()
+        QTimer.singleShot(75, 
+                lambda: 
+                self.whacked_button.setStyleSheet(temp_file + 
+                                                  "border: 7px solid #DFE0F2;"))
 
     def start_next(self): #prepares next mole appearing during start up, checks if max mole count has been reached
         if self.mole_index < len(self.mole_closet):
