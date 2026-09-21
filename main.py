@@ -1,17 +1,17 @@
 import sys
 import random
-from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QGridLayout, QWidget, QLabel, QVBoxLayout, QSizePolicy
-from PyQt6.QtCore import QTimer, Qt, QRect
+from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QGridLayout, QWidget, QLabel, QVBoxLayout, QSizePolicy, QHBoxLayout
+from PyQt6.QtCore import QTimer, Qt
 from datetime import datetime
 
 LIGHT_GREEN = "#55a12d"
 GREEN = "#0f0"
 BROWN = "brown"
-mole_count = 1
+mole_count = 2
 GRID_SIZE = 4
 DFLT_BTN_W = 93
 DFLT_BTN_H = 85
-game_duration = 30
+game_duration = 5
 
 class MyFirstWindow(QMainWindow):
     def __init__(self):
@@ -21,7 +21,6 @@ class MyFirstWindow(QMainWindow):
         self.game_timer.setSingleShot(True) #sets how long each game lasts
 
         self.setWindowTitle("Whack a mole")
-        self.setGeometry(500, 500, 500, 500)
         self.preset_home_menu()
         self.preset_game_graphics()
 
@@ -29,6 +28,7 @@ class MyFirstWindow(QMainWindow):
         
     def preset_home_menu(self):
         self.menu_widget = QWidget()
+        self.menu_widget.setMinimumSize(500, 500)
         self.menu_widget.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -47,9 +47,10 @@ class MyFirstWindow(QMainWindow):
 
         self.start_game_button = QPushButton("Start Game")
         self.start_game_button.clicked.connect(self.load_game_instance)
-        self.start_game_button.setFixedSize(200, 60)
+        self.start_game_button.setMinimumSize(200, 60)
         self.start_game_button.setStyleSheet("""
             *{
+            font-size: 15px;
             border: 1px solid 'black';
             border-radius: 10px;
             font-family: 'Consolas';
@@ -57,6 +58,7 @@ class MyFirstWindow(QMainWindow):
             color: 'black';
             }
             *:hover{
+            font-size: 15px;
             border: 1px solid 'black';
             border-radius: 10px;
             font-family: 'Consolas';
@@ -67,9 +69,10 @@ class MyFirstWindow(QMainWindow):
         )
 
         self.settings_button = QPushButton("Settings")
-        self.settings_button.setFixedSize(200, 60)
+        self.settings_button.setMinimumSize(200, 60)
         self.settings_button.setStyleSheet("""
             *{
+            font-size: 15px;
             border: 1px solid 'black';
             border-radius: 10px;
             font-family: 'Consolas';
@@ -77,6 +80,7 @@ class MyFirstWindow(QMainWindow):
             color: 'black';
             }
             *:hover{
+            font-size: 15px;
             border: 1px solid 'black';
             border-radius: 10px;
             font-family: 'Consolas';
@@ -104,10 +108,12 @@ class MyFirstWindow(QMainWindow):
     def preset_game_graphics(self):
         self.game_widget = QWidget() #creates the gameplay widget
         self.game_widget.setStyleSheet("background: #D98324;")
-        self.glyout = QVBoxLayout(self.game_widget)
+        self.game_widget.setMinimumSize(500, 500)
 
+        self.uilyout = QHBoxLayout()
+        self.uilyout.setContentsMargins(60, 0, 60, 0)
         self.score_ui = QLabel(f"Score: 0") #counter stylesheets
-        self.score_ui.setFixedSize(160, 60)
+        self.score_ui.setMinimumSize(160, 60)
         self.score_ui.setStyleSheet(
             "border: 2px solid grey;"
             "border-radius: 10px;"
@@ -117,6 +123,19 @@ class MyFirstWindow(QMainWindow):
             "font-family: 'Times New Roman'"
         )
         self.score_ui.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.timer_ui = QLabel(f"Time: {game_duration}s")
+        self.timer_ui.setMinimumSize(160, 60)
+        self.timer_ui.setStyleSheet(
+            "border: 2px solid grey;"
+            "border-radius: 10px;"
+            "background: white;"
+            "color: black;"
+            "font-size: 20px;"
+            "font-family: 'Times New Roman'"
+        )
+        self.timer_ui.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.uilyout.addWidget(self.timer_ui, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.uilyout.addWidget(self.score_ui, alignment=Qt.AlignmentFlag.AlignCenter)
 
         self.grid_layout = QGridLayout()
         self.buttons = [] #buttons array
@@ -133,13 +152,11 @@ class MyFirstWindow(QMainWindow):
                 )
                 self.grid_layout.addWidget(self.button, row, col)
                 self.buttons.append(self.button) #puts the created button instances into an array
-                self.button.clicked.connect(self.whack) #detects button click and calls whack function       
-
-        self.glyout.addWidget(self.score_ui, alignment=Qt.AlignmentFlag.AlignCenter, stretch=1)
-        self.glyout.addLayout(self.grid_layout, stretch=4)
-
-    def countdown(self): #add game start countdown ui later
-        pass
+                self.button.clicked.connect(self.whack) #detects button click and calls whack function 
+     
+        self.glyout = QVBoxLayout(self.game_widget)
+        self.glyout.addLayout(self.uilyout)
+        self.glyout.addLayout(self.grid_layout)
 
     def load_game_instance(self):
         self.total_movements = 0 #counts the total potential points in any single game
@@ -155,6 +172,11 @@ class MyFirstWindow(QMainWindow):
 
         QTimer.singleShot(game_duration * 1000, self.end_game_instance)
 
+        self.display_time = game_duration
+        self.dp_timer = QTimer()
+        self.dp_timer.timeout.connect(self.countdown)
+        self.dp_timer.start(1000)
+
         self.mole_index = 0
 
         self.spawn_timer = QTimer(self)
@@ -162,7 +184,15 @@ class MyFirstWindow(QMainWindow):
         self.spawn_timer.timeout.connect(self.next_mole)
 
         self.start_next()
-    
+
+    def countdown(self): #add game start countdown ui later
+        #get the current time and set it on the label
+        if self.display_time > 0:
+            self.display_time -= 1
+            self.timer_ui.setText(f"Timer: {self.display_time}s")
+        else:
+            self.dp_timer.stop()
+            
     def whack(self):
         """
         when the mole is whacked, also resets move_time
@@ -220,12 +250,18 @@ class MyFirstWindow(QMainWindow):
             vacancy = random.choice(empty_buttons) #picks a random valid location to spawn the mole
             vacancy.setText(mole_num)
 
-            print(mole_num) #this is for debugging
+            print(f"Created {mole_num}") #this is for debugging
 
         move_time = random.randint(900, 1500)
         QTimer.singleShot(move_time, lambda: self.mole_move(vacancy, mole_num)) #code for forcing mole to move after a set time
         
     def mole_move(self, btn, which_mole):
+        if self.display_time == 0:
+            for btn in self.buttons:
+                if btn.text != "":
+                    btn.setText("")
+            return
+    
         if btn.text() != which_mole:
             return
         
@@ -250,13 +286,16 @@ class MyFirstWindow(QMainWindow):
             QApplication.quit() #the game crashes if the board becomes filled with same or more moles for each hole due to famine
             print("!!!!!the game crashed due to overpopulation!!!!!")
 
-    def end_game_instance(self):    
+    def end_game_instance(self):
         try:
             self.assess_score()
             self.append_score()
         except ZeroDivisionError: #if for SOME REASON the total_movements didn't register or mole didn't move, the game won't crash
             print("Error: It appears that the mole did not move, or mole doesn't exist")
-        QApplication.quit()
+        self.show_endscreen()
+
+    def show_endscreen(self):
+        pass
 
     def assess_score(self):
         self.accuracy = (self.forced_movements / self.total_movements) * 100
@@ -277,6 +316,15 @@ class MyFirstWindow(QMainWindow):
             self.rank = "undefined"
 
     def append_score(self):
+        # debugging #
+        print(f"Game Instance created: {self.now};")
+        print(f"Finished in {game_duration} seconds;")
+        print(f"Score: {self.forced_movements};")
+        print(f"Misses: {self.misses};")
+        print(f"Accuracy: {round(self.accuracy, 1)}%;")
+        print(f"Rank: {self.rank}")
+        # debugging #    
+
         with open("score.txt", "a", encoding="utf-8") as file: #only records score when player actually finishes a game without exiting (might change in the future)
             file.write(f"Game Instance created: {self.now};\n")
             file.write(f"Finished in {game_duration} seconds;\n")
