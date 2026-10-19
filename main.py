@@ -1,17 +1,17 @@
 import sys
 import random
-from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QGridLayout, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QStackedWidget
+from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QGridLayout, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QStackedWidget, QComboBox, QSlider
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QCursor
 from datetime import datetime
 
 mole_count = 2
 grid_size = 4 #default 4x4; only 3 - 5 for now please don't bother with any larger or smaller
-DFLT_BTN_W = 93
-DFLT_BTN_H = 90
+DFLT_BTN_W = 186
+DFLT_BTN_H = 180
 mole_speed_min = 900
 mole_speed_max = 1500
-game_duration = 5 #in seconds
+DEFAULT_GAME_DURATION = 15 #in seconds
 
 class EndScreenWidget(QWidget): #1. This class is required otherwise the endscreen widget won't overlay
     def __init__(
@@ -27,10 +27,10 @@ class EndScreenWidget(QWidget): #1. This class is required otherwise the endscre
         self.setContentsMargins(40, 30, 40, 30)
         self.setStyleSheet("""
             #overlay {
-                border: 2px solid black;
+                border: 4px solid black;
                 background: #289911;
                 border-radius: 15px;
-                border: 2px solid #ffff21;    
+                border: 4px solid #ffff21;    
             }
         """)
 
@@ -44,22 +44,22 @@ class EndScreenWidget(QWidget): #1. This class is required otherwise the endscre
         
         # Add some content to the overlay
         self.label = QLabel("Rank:", alignment=Qt.AlignmentFlag.AlignCenter)
-        self.label.setMinimumHeight(60)
+        self.label.setMinimumHeight(120)
         self.label.setStyleSheet(
             "color: black;" \
             "background: white;" \
-            "font-size: 20px;" \
+            "font-size: 40px;" \
             "font-family: 'Consolas';" \
             "font-weight: bold;"
             "border-radius: 5px;"
             )
 
         self.s_label = QLabel("Score:", alignment=Qt.AlignmentFlag.AlignCenter)
-        self.s_label.setMinimumSize(200, 60)
+        self.s_label.setMinimumSize(400, 120)
         self.s_label.setStyleSheet(
             "color: black;" \
             "background: white;" \
-            "font-size: 15px;" \
+            "font-size: 30px;" \
             "font-family: 'Consolas';" \
             "font-style: italic;"            
             "border-radius: 5px;"
@@ -73,16 +73,16 @@ class EndScreenWidget(QWidget): #1. This class is required otherwise the endscre
                 background: #86e637;
                 color: black;
                 font-family: 'Verdana';
-                font-size: 15px
+                font-size: 30px
             }   
             *:hover{
                 background: #6eb038;
                 color: black;
                 font-family: 'Verdana';
-                font-size: 15px
+                font-size: 30px
             }
         """)
-        self.home_button.setMinimumHeight(60)
+        self.home_button.setMinimumHeight(120)
 
         self.again_button = QPushButton("Play Again")
         self.again_button.clicked.connect(play_again_callback)
@@ -92,16 +92,16 @@ class EndScreenWidget(QWidget): #1. This class is required otherwise the endscre
                 background: #86e637;
                 color: black;
                 font-family: 'Verdana';
-                font-size: 15px
+                font-size: 30px
             }   
             *:hover{
                 background: #6eb038;
                 color: black;
                 font-family: 'Verdana';
-                font-size: 15px
+                font-size: 30px
             }
         """)
-        self.again_button.setMinimumHeight(60)
+        self.again_button.setMinimumHeight(120)
 
         btn_layout.addWidget(self.home_button)
         btn_layout.addWidget(self.again_button)
@@ -121,56 +121,59 @@ class EndScreenWidget(QWidget): #1. This class is required otherwise the endscre
 class MyFirstWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.game_duration = DEFAULT_GAME_DURATION
         self.game_id = 0 #this variable is a checker for anything that calls the mole_move functions;
         #once a new game starts, this variable prevents any zombie instances from creating complications, especially ones that require a recursive QTimer
-        self.display_time = game_duration
+        self.display_time = self.game_duration
         self.countdown_timer = QTimer(self) #display timer
         self.countdown_timer.timeout.connect(self.countdown)
 
         self.setWindowTitle("Whack a mole")
-        self.setFixedSize(500, 500)
+        self.resize(1000, 1000)
         self.preset_home_menu()
         self.preset_game_graphics()
+        self.preset_settings()
 
         self.pages = QStackedWidget() #alternator for game/menu widget
 
         self.pages.addWidget(self.menu_widget)
         self.pages.addWidget(self.game_widget)
+        self.pages.addWidget(self.settings_widget)
 
         self.setCentralWidget(self.pages)
         self.pages.setCurrentWidget(self.menu_widget)
         
     def preset_home_menu(self): #loads home menu onto a spread 
         self.menu_widget = QWidget()
-        self.menu_widget.setMinimumSize(500, 500)
+        self.menu_widget.setMinimumSize(1000, 1000)
         self.menu_widget.setStyleSheet("background: #D98324;")
 
-        self.mnlyout = QVBoxLayout(self.menu_widget)
-        self.mnlyout.setContentsMargins(40, 100, 40, 150)
+        mnlyout = QVBoxLayout(self.menu_widget)
+        mnlyout.setContentsMargins(40, 150, 40, 250)
 
-        self.menu_ttl = QLabel("Whack-A-Mole", alignment=Qt.AlignmentFlag.AlignCenter)
-        self.menu_ttl.setStyleSheet(
+        menu_ttl = QLabel("Whack-A-Mole", alignment=Qt.AlignmentFlag.AlignCenter)
+        menu_ttl.setStyleSheet(
             "color: black;"
-            "font-size: 40px;"
+            "font-size: 80px;"
             "font-family: 'Consolas';"
         )
 
-        self.start_game_button = QPushButton("Start Game")
-        self.start_game_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.start_game_button.clicked.connect(self.load_game_instance)
-        self.start_game_button.setMinimumSize(200, 60)
-        self.start_game_button.setStyleSheet("""
+        start_game_button = QPushButton("Start Game")
+        start_game_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        start_game_button.clicked.connect(self.load_game_instance)
+        start_game_button.setMinimumSize(400, 120)
+        start_game_button.setStyleSheet("""
             *{
-            font-size: 15px;
-            border: 1px solid 'black';
+            font-size: 30px;
+            border: 2px solid 'black';
             border-radius: 10px;
             font-family: 'Consolas';
             background: 'lightgreen';
             color: 'black';
             }
             *:hover{
-            font-size: 15px;
-            border: 1px solid 'black';
+            font-size: 30px;
+            border: 2px solid 'black';
             border-radius: 10px;
             font-family: 'Consolas';
             background: 'green';
@@ -178,21 +181,22 @@ class MyFirstWindow(QMainWindow):
             }
         """)
 
-        self.settings_button = QPushButton("Settings")
-        self.settings_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.settings_button.setMinimumSize(200, 60)
-        self.settings_button.setStyleSheet("""
+        settings_button = QPushButton("Settings")
+        settings_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        settings_button.clicked.connect(self.load_settings)
+        settings_button.setMinimumSize(400, 120)
+        settings_button.setStyleSheet("""
             *{
-            font-size: 15px;
-            border: 1px solid 'black';
+            font-size: 30px;
+            border: 2px solid 'black';
             border-radius: 10px;
             font-family: 'Consolas';
             background: '#ffc640';
             color: 'black';
             }
             *:hover{
-            font-size: 15px;
-            border: 1px solid 'black';
+            font-size: 30px;
+            border: 2px solid 'black';
             border-radius: 10px;
             font-family: 'Consolas';
             background: '#6e5314';
@@ -200,24 +204,24 @@ class MyFirstWindow(QMainWindow):
             }
         """)
 
-        self.clear_score_button = QPushButton("clear score", parent=self.menu_widget) #developer function
-        self.clear_score_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor)) #developer function
-        self.clear_score_button.setStyleSheet("color: grey; background: white; border: 1px solid black") #developer function
-        self.clear_score_button.move(20, 10) #developer function
-        self.clear_score_button.clicked.connect(self.clear_score) #developer function caller (will be removed later)
+        clear_score_button = QPushButton("clear score", parent=self.menu_widget) #developer function
+        clear_score_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor)) #developer function
+        clear_score_button.setStyleSheet("color: grey; background: white; border: 1px solid black") #developer function
+        clear_score_button.move(20, 10) #developer function
+        clear_score_button.clicked.connect(self.clear_score) #developer function caller (will be removed later)
 
-        self.mnlyout.addWidget(
-            self.menu_ttl, 
+        mnlyout.addWidget(
+            menu_ttl, 
             alignment=Qt.AlignmentFlag.AlignCenter
         )
-        self.mnlyout.addSpacing(70)
-        self.mnlyout.addWidget(
-            self.start_game_button, 
+        mnlyout.addSpacing(70)
+        mnlyout.addWidget(
+            start_game_button, 
             alignment=Qt.AlignmentFlag.AlignCenter
         )
-        self.mnlyout.addSpacing(30)
-        self.mnlyout.addWidget(
-            self.settings_button, 
+        mnlyout.addSpacing(10)
+        mnlyout.addWidget(
+            settings_button, 
             alignment=Qt.AlignmentFlag.AlignCenter
         )
 
@@ -228,32 +232,32 @@ class MyFirstWindow(QMainWindow):
         self.uilyout = QHBoxLayout()
         self.uilyout.setContentsMargins(60, 15, 60, 15)
         self.score_ui = QLabel(f"Score: 0", alignment=Qt.AlignmentFlag.AlignCenter) #counter stylesheets
-        self.score_ui.setMinimumSize(160, 60)
+        self.score_ui.setMinimumSize(320, 120)
         self.score_ui.setStyleSheet(
             "border: 2px solid grey;"
             "border-radius: 10px;"
             "background: white;"
             "color: black;"
-            "font-size: 20px;"
+            "font-size: 40px;"
             "font-family: 'Times New Roman'"
         )
         self.timer_ui = QLabel(f"Time: {self.display_time}s", alignment=Qt.AlignmentFlag.AlignCenter)
-        self.timer_ui.setMinimumSize(160, 60)
+        self.timer_ui.setMinimumSize(320, 120)
         self.timer_ui.setStyleSheet(
             "border: 2px solid grey;"
             "border-radius: 10px;"
             "background: white;"
             "color: black;"
-            "font-size: 20px;"
+            "font-size: 40px;"
             "font-family: 'Times New Roman'"
         )
         self.uilyout.addWidget(
             self.timer_ui, 
-            alignment=Qt.AlignmentFlag.AlignCenter|Qt.AlignmentFlag.AlignTop
+            alignment=Qt.AlignmentFlag.AlignCenter
         )
         self.uilyout.addWidget(
             self.score_ui, 
-            alignment=Qt.AlignmentFlag.AlignCenter|Qt.AlignmentFlag.AlignTop
+            alignment=Qt.AlignmentFlag.AlignCenter
         )
 
         self.grid_layout = QGridLayout() #game grid layout
@@ -261,19 +265,19 @@ class MyFirstWindow(QMainWindow):
         self.buttons = [] #buttons array
         for row in range(grid_size): #creates 4 columns
             for col in range(grid_size): #creates a column of 4 buttons
-                self.button = QPushButton("")
-                self.button.setMinimumSize(DFLT_BTN_W, DFLT_BTN_H)
-                self.button.setStyleSheet(
+                button = QPushButton("")
+                button.setMinimumSize(DFLT_BTN_W, DFLT_BTN_H)
+                button.setStyleSheet(
                     "background: #291528;"
-                    "border-radius: 42;"
+                    "border-radius: 84px;"
                     "border: 7px solid #DFE0F2;"
                     "color: white;"
-                    "font-size: 20px;"
+                    "font-size: 40px;"
                 )
-                self.button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                self.grid_layout.addWidget(self.button, row, col)
-                self.buttons.append(self.button) #puts the created button instances into an array
-                self.button.clicked.connect(self.whack) #detects button click and calls whack function 
+                button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+                self.grid_layout.addWidget(button, row, col)
+                self.buttons.append(button) #puts the created button instances into an array
+                button.clicked.connect(self.whack) #detects button click and calls whack function 
      
         self.glyout = QVBoxLayout(self.game_widget)
         self.glyout.setContentsMargins(20, 0, 20, 5)
@@ -287,9 +291,97 @@ class MyFirstWindow(QMainWindow):
 
         self.mole_queue = [] #list that contains the id of each mole, might be useful in the future
 
+    def preset_settings(self):
+        self.settings_widget = QWidget()
+        self.settings_widget.setStyleSheet("background: green")
+
+        st_layout = QVBoxLayout(self.settings_widget)
+        slider_layout = QHBoxLayout()
+        grid_setting_layout = QHBoxLayout()
+
+        return_button = QPushButton("Return")
+        return_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        return_button.setStyleSheet("""
+            border: 1px solid black; \
+            color: black;
+            background: white;
+            font-size: 40px
+        """)
+        return_button.clicked.connect(self.load_home)
+
+        display_grid_setting = QLabel("Grid Layout (WIP)")
+
+        set_grid_size = QComboBox()
+        set_grid_size.setStyleSheet("background: white; color: black; font-size: 40px")
+        set_grid_size.addItems(["3x3", "4x4", "5x5"])
+        set_grid_size.setCurrentIndex(grid_size - 3) #3x3 grid size is index 0, 4x4 is 1, etc. ^^^^
+
+        self.display_game_duration = QLabel(
+            f"Game Duration: {self.game_duration}s"
+        )
+        self.display_game_duration.setMinimumSize(300, 50)
+        self.display_game_duration.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.display_game_duration.setStyleSheet("""
+            font-size: 30px;
+            color: black;
+            border: 2px solid 'dark-green';
+            background: white;
+            font-family: 'Times New Roman'
+        """)
+
+        set_game_time = QSlider(Qt.Orientation.Horizontal)
+        set_game_time.setValue(self.game_duration)
+        set_game_time.valueChanged.connect(self.change_game_duration)
+        set_game_time.sliderReleased.connect(
+            lambda: print(f"Game duration changed to {self.game_duration} seconds")
+        )
+        set_game_time.setStyleSheet("""
+            QSlider::groove:horizontal {
+                height: 16px;
+                background: grey;
+                border-radius: 4px;
+                border: 2px solid orange;
+            }
+            QSlider::handle:horizontal {
+                background: red;
+                width: 36px;
+                border: 2px solid orange;
+                height: 36px;
+                margin: -10px 0;
+                border-radius: 9px;
+            }
+        """)
+        set_game_time.setMinimumSize(800, 50)
+        set_game_time.setRange(5, 60)
+
+        grid_setting_layout.addWidget(display_grid_setting)
+        grid_setting_layout.addWidget(set_grid_size)
+
+        slider_layout.addWidget(set_game_time)
+        slider_layout.addSpacing(20)
+        slider_layout.addWidget(self.display_game_duration)
+        slider_layout.setContentsMargins(40, 0, 40, 0)
+
+        st_layout.addWidget(return_button)
+        st_layout.addSpacing(400)
+        st_layout.addLayout(grid_setting_layout)
+        st_layout.addSpacing(200)
+        st_layout.addLayout(slider_layout)
+        st_layout.setContentsMargins(50, 50, 50, 150)
+
+    def change_game_duration(self, value):
+        self.game_duration = value
+        self.display_game_duration.setText(
+            f"Game duration: {value}s"
+        )
+
     def load_home(self):
         self.overlay.hide()
         self.pages.setCurrentWidget(self.menu_widget)
+
+    def load_settings(self):
+        self.overlay.hide()
+        self.pages.setCurrentWidget(self.settings_widget)
 
     def load_game_instance(self):
         self.game_id += 1
@@ -299,7 +391,7 @@ class MyFirstWindow(QMainWindow):
         self.total_mole_movements = 0 #counts the total potential points in any single game
         self.successful_hits = 0 #points
         self.score_ui.setText(f"Score: {self.successful_hits}")
-        self.display_time = game_duration
+        self.display_time = self.game_duration
         self.timer_ui.setText(f"Get Ready")
 
         self.pages.setCurrentWidget(self.game_widget) #puts the gameplay screen on the main window
@@ -327,14 +419,14 @@ class MyFirstWindow(QMainWindow):
         self.overlay.raise_()
 
     def run_game_instance(self): #starts game, initiates moles, spawns a mole per mole count every 
-        self.timer_ui.setText(f"Time: {game_duration}s")
+        self.timer_ui.setText(f"Time: {self.game_duration}s")
         
         self.mole_queue = [] 
         if len(self.mole_queue) == 0: #check for an empty list before actually appending moles else they duplicate
             for i in range(mole_count):
                 self.mole_queue.append(f"MOLE{i}")
 
-        QTimer.singleShot(game_duration * 1000, self.end_game_instance)
+        QTimer.singleShot(self.game_duration * 1000, self.end_game_instance)
 
 
         self.countdown_timer.start(1000)
@@ -360,23 +452,21 @@ class MyFirstWindow(QMainWindow):
         when the mole is whacked, also resets move_time
         so mole movement can be controlled to some degree by the player
         """
-        self.whacked_button = self.sender() 
-        if self.whacked_button.text() != "":
-            self.mole_move(
-                self.whacked_button, 
-                self.whacked_button.text(),
-                self.game_id
-            )
-            self.whack_effect(True)
-            self.whacked_button.setText("")
+        button = self.sender() 
+        if button.text() != "":
+            mole = button.text()
+            self.mole_move(button, mole, self.game_id)
+            self.whack_effect(button, True)
+            button.setText("")
             self.successful_hits += 1
             self.score_ui.setText(f"Score: {self.successful_hits}")
         else:
-            self.whack_effect()
+            self.total_mole_movements += 1
+            self.whack_effect(button)
 
-    def whack_effect(self, isHit=False): #border whack effect
-        button = self.whacked_button #stores whacked button into a local variable in case it changes.
+    def whack_effect(self, button, isHit=False): #border whack effect
         temp_file = button.styleSheet() #temporary file that stores stylesheet string
+
         if isHit:
             button.setStyleSheet(
                 temp_file + "border: 10px solid #39fc03;"
@@ -407,7 +497,8 @@ class MyFirstWindow(QMainWindow):
         self.mole_index += 1
         self.start_next()
         
-    def create_moles(self, mole_num): #displays mole text on the board
+    def create_moles(self, mole_num): #displays mole text on the board, terminates 
+
         empty_buttons = [btn for btn in self.buttons if btn.text() == ""] #vacancy condition for spawning a mole
 
         if empty_buttons: #checks for a vacant button to place the mole
@@ -488,6 +579,7 @@ class MyFirstWindow(QMainWindow):
         if self.total_mole_movements == 0: #prevents ZeroDivisionError from ever occurring
             self.accuracy = -1
             self.misses = 0
+            return
 
         self.accuracy = (self.successful_hits / self.total_mole_movements) * 100
 
@@ -515,7 +607,7 @@ class MyFirstWindow(QMainWindow):
             return
         # debugging #
         print(f"Game Instance created: {self.now};")
-        print(f"Finished in {game_duration} seconds;")
+        print(f"Finished in {self.game_duration} seconds;")
         print(f"Score: {self.successful_hits};")
         print(f"Misses: {self.misses};")
         print(f"Accuracy: {round(self.accuracy, 1)}%;")
@@ -524,7 +616,7 @@ class MyFirstWindow(QMainWindow):
 
         with open("score.txt", "a", encoding="utf-8") as file: #only records score when player actually finishes a game without exiting (might change in the future)
             file.write(f"Game Instance created: {self.now};\n")
-            file.write(f"Finished in {game_duration} seconds;\n")
+            file.write(f"Finished in {self.game_duration} seconds;\n")
             file.write(f"Score: {self.successful_hits};\n")
             file.write(f"Misses: {self.misses};\n")
             file.write(f"Accuracy: {round(self.accuracy, 1)}%;\n")
