@@ -5,15 +5,22 @@ from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QCursor
 from datetime import datetime
 
-mole_count = 2
-grid_size = 4 #default 4x4; only 3 - 5 for now please don't bother with any larger or smaller
+mole_count = 2 #max moles that can spawn per game, can be changed
+grid_size = 4 #default 4x4; can be changed to 3x3 or 5x5 in settings
 DFLT_BTN_W = 186
 DFLT_BTN_H = 180
-mole_speed_min = 900
-mole_speed_max = 1500
-DEFAULT_GAME_DURATION = 15 #in seconds
+mole_speed_min = 900 #mole moves earliest after this many ms
+mole_speed_max = 1500 #mole moves latest after this many ms
+DEFAULT_GAME_DURATION = 5 #in seconds
+MOLE_HOLE_STYLE = """
+    background: #291528;
+    border-radius: 84px;
+    border: 7px solid #DFE0F2;
+    color: white;
+    font-size: 40px;
+"""
 
-class EndScreenWidget(QWidget): #1. This class is required otherwise the endscreen widget won't overlay
+class EndScreenWidget(QWidget): #1. This class is required otherwise the game over screen won't overlay on top of gameplay  
     def __init__(
         self, 
         home_callback, #argument that accepts a function
@@ -27,7 +34,6 @@ class EndScreenWidget(QWidget): #1. This class is required otherwise the endscre
         self.setContentsMargins(40, 30, 40, 30)
         self.setStyleSheet("""
             #overlay {
-                border: 4px solid black;
                 background: #289911;
                 border-radius: 15px;
                 border: 4px solid #ffff21;    
@@ -46,62 +52,27 @@ class EndScreenWidget(QWidget): #1. This class is required otherwise the endscre
         self.label = QLabel("Rank:", alignment=Qt.AlignmentFlag.AlignCenter)
         self.label.setMinimumHeight(120)
         self.label.setStyleSheet(
-            "color: black;" \
-            "background: white;" \
-            "font-size: 40px;" \
-            "font-family: 'Consolas';" \
-            "font-weight: bold;"
-            "border-radius: 5px;"
-            )
+            self.label_style("black", "white", 40, 'Consolas', 'normal', 'bold', 5)
+        )
 
         self.s_label = QLabel("Score:", alignment=Qt.AlignmentFlag.AlignCenter)
         self.s_label.setMinimumSize(400, 120)
         self.s_label.setStyleSheet(
-            "color: black;" \
-            "background: white;" \
-            "font-size: 30px;" \
-            "font-family: 'Consolas';" \
-            "font-style: italic;"            
-            "border-radius: 5px;"
-            )        
+            self.label_style("black", "white", 30, 'Consolas', 'italic', 'normal', 5)
+        )
 
         self.home_button = QPushButton("Return Home")
         self.home_button.clicked.connect(home_callback)
-        self.home_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.home_button.setStyleSheet("""
-            *{
-                background: #86e637;
-                color: black;
-                font-family: 'Verdana';
-                font-size: 30px
-            }   
-            *:hover{
-                background: #6eb038;
-                color: black;
-                font-family: 'Verdana';
-                font-size: 30px
-            }
-        """)
-        self.home_button.setMinimumHeight(120)
 
         self.again_button = QPushButton("Play Again")
         self.again_button.clicked.connect(play_again_callback)
-        self.again_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.again_button.setStyleSheet("""
-            *{
-                background: #86e637;
-                color: black;
-                font-family: 'Verdana';
-                font-size: 30px
-            }   
-            *:hover{
-                background: #6eb038;
-                color: black;
-                font-family: 'Verdana';
-                font-size: 30px
-            }
-        """)
-        self.again_button.setMinimumHeight(120)
+
+        for button in (self.home_button, self.again_button):
+            button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            button.setMinimumHeight(120)
+            button.setStyleSheet(
+                self.button_style("#86e637", "#6eb038")
+            )
 
         btn_layout.addWidget(self.home_button)
         btn_layout.addWidget(self.again_button)
@@ -116,6 +87,50 @@ class EndScreenWidget(QWidget): #1. This class is required otherwise the endscre
         )
         lyout.addSpacing(50)
         lyout.addLayout(btn_layout)
+
+    def label_style(
+        self,
+        color,
+        background,
+        font_size,
+        font_family,
+        font_style,
+        font_weight,
+        border_radius,
+    ):
+        return f"""
+            *{{
+                color: {color};
+                background: {background};
+                font-size: {font_size}px;
+                font-family: {font_family};
+                font-style: {font_style};
+                font-weight: {font_weight};
+                border-radius: {border_radius}px;
+            }}
+        """
+
+    def button_style( #turns repetitive button stylesheets into one setting, reducing redundancy
+        self,
+        background,
+        hover_background,
+        font="Verdana",
+        size=30,
+        color="black",
+        hover_color="black"
+    ):
+        return f"""
+            *{{
+                background: {background};
+                color: {color};
+                font-family: '{font}';
+                font-size: {size}px;
+            }}
+            *:hover{{
+                background: {hover_background};
+                color: {hover_color};
+            }}
+        """
                 
 
 class MyFirstWindow(QMainWindow):
@@ -159,51 +174,27 @@ class MyFirstWindow(QMainWindow):
         )
 
         start_game_button = QPushButton("Start Game")
-        start_game_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         start_game_button.clicked.connect(self.load_game_instance)
-        start_game_button.setMinimumSize(400, 120)
-        start_game_button.setStyleSheet("""
-            *{
-            font-size: 30px;
-            border: 2px solid 'black';
-            border-radius: 10px;
-            font-family: 'Consolas';
-            background: 'lightgreen';
-            color: 'black';
-            }
-            *:hover{
-            font-size: 30px;
-            border: 2px solid 'black';
-            border-radius: 10px;
-            font-family: 'Consolas';
-            background: 'green';
-            color: 'white';
-            }
-        """)
+        start_game_button.setStyleSheet(
+            self.button_style(
+                "lightgreen", 'green', 'Consolas', 
+                hover_color="white", border="2px solid 'black'", border_radius=10
+            )
+        )
 
         settings_button = QPushButton("Settings")
-        settings_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         settings_button.clicked.connect(self.load_settings)
-        settings_button.setMinimumSize(400, 120)
-        settings_button.setStyleSheet("""
-            *{
-            font-size: 30px;
-            border: 2px solid 'black';
-            border-radius: 10px;
-            font-family: 'Consolas';
-            background: '#ffc640';
-            color: 'black';
-            }
-            *:hover{
-            font-size: 30px;
-            border: 2px solid 'black';
-            border-radius: 10px;
-            font-family: 'Consolas';
-            background: '#6e5314';
-            color: 'white';
-            }
-        """)
+        settings_button.setStyleSheet(
+            self.button_style(
+                "#ffc640", '#6e5314', 'Consolas', 
+                hover_color="white", border="2px solid 'black'", border_radius=10
+            )
+        )
 
+        for button in (start_game_button, settings_button):
+            button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            button.setMinimumSize(400, 120)
+        
         clear_score_button = QPushButton("clear score", parent=self.menu_widget) #developer function
         clear_score_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor)) #developer function
         clear_score_button.setStyleSheet("color: grey; background: white; border: 1px solid black") #developer function
@@ -267,13 +258,7 @@ class MyFirstWindow(QMainWindow):
             for col in range(grid_size): #creates a column of 4 buttons
                 button = QPushButton("")
                 button.setMinimumSize(DFLT_BTN_W, DFLT_BTN_H)
-                button.setStyleSheet(
-                    "background: #291528;"
-                    "border-radius: 84px;"
-                    "border: 7px solid #DFE0F2;"
-                    "color: white;"
-                    "font-size: 40px;"
-                )
+                button.setStyleSheet(MOLE_HOLE_STYLE)
                 button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
                 self.grid_layout.addWidget(button, row, col)
                 self.buttons.append(button) #puts the created button instances into an array
@@ -301,17 +286,19 @@ class MyFirstWindow(QMainWindow):
 
         return_button = QPushButton("Return")
         return_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        return_button.setStyleSheet("""
-            border: 1px solid black; \
-            color: black;
-            background: white;
-            font-size: 40px
-        """)
+        return_button.setStyleSheet(
+            self.button_style(
+                "white", 
+                size=40, 
+                color="black", 
+                border="1px solid black"
+            )
+        )
         return_button.clicked.connect(self.load_home)
 
         display_grid_setting = QLabel("Grid Layout (WIP)")
 
-        set_grid_size = QComboBox()
+        set_grid_size = QComboBox() #dropdown menu for {variable name}
         set_grid_size.setStyleSheet("background: white; color: black; font-size: 40px")
         set_grid_size.addItems(["3x3", "4x4", "5x5"])
         set_grid_size.setCurrentIndex(grid_size - 3) #3x3 grid size is index 0, 4x4 is 1, etc. ^^^^
@@ -362,7 +349,7 @@ class MyFirstWindow(QMainWindow):
         slider_layout.addWidget(self.display_game_duration)
         slider_layout.setContentsMargins(40, 0, 40, 0)
 
-        st_layout.addWidget(return_button)
+        st_layout.addWidget(return_button, alignment=Qt.AlignmentFlag.AlignCenter)
         st_layout.addSpacing(400)
         st_layout.addLayout(grid_setting_layout)
         st_layout.addSpacing(200)
@@ -374,6 +361,41 @@ class MyFirstWindow(QMainWindow):
         self.display_game_duration.setText(
             f"Game duration: {value}s"
         )
+
+    def button_style( #turning all styling into one function setting reduces redundancy.
+        self,
+        background,
+        hover_background=None,
+        font="Verdana",
+        size=30,
+        color="black",
+        hover_color=None,
+        border=None,
+        border_radius=0
+    ):
+        if hover_background is None:
+            hover_background = background
+
+        if hover_color is None:
+            hover_color = color
+
+        return f"""
+            *{{
+                background: {background};
+                color: {color};
+                font-family: '{font}';
+                font-size: {size}px;
+                border: {border};
+                border-radius: {border_radius}px;
+            }}
+            *:hover{{
+                background: {hover_background};
+                color: {hover_color};
+            }}
+        """
+
+    def label_style(self):
+        return
 
     def load_home(self):
         self.overlay.hide()
@@ -465,17 +487,9 @@ class MyFirstWindow(QMainWindow):
             self.whack_effect(button)
 
     def whack_effect(self, button, isHit=False): #border whack effect
-        temp_file = button.styleSheet() #temporary file that stores stylesheet string
-
-        if isHit:
-            button.setStyleSheet(
-                temp_file + "border: 10px solid #39fc03;"
-            )
-        else:
-            button.setStyleSheet(
-                temp_file + "border: 9px solid #DFE0F2;"
-            )
-
+        original_style = button.styleSheet() #temporary file that stores stylesheet string
+        border = "10px solid #39fc03" if isHit else "9px solid #DFE0F2"
+        button.setStyleSheet(f"{original_style}border: {border};")
         temp_file = button.styleSheet()
         QTimer.singleShot(
             75, 
@@ -549,11 +563,9 @@ class MyFirstWindow(QMainWindow):
             print("!!!!!the game crashed due to overpopulation!!!!!")
 
     def end_game_instance(self):
+        self.spawn_timer.stop()
         self.clear_all_moles()
-        try:
-            self.assess_score()
-        except ZeroDivisionError: #if for SOME REASON the total_mole_movements didn't register or mole didn't move, the game won't crash
-            print("ZeroDivisionError: It appears that the mole did not move, or mole doesn't exist")
+        self.assess_score()
         self.evaluate_rank()
         self.append_score()
         self.toggle_endscreen()
@@ -571,11 +583,11 @@ class MyFirstWindow(QMainWindow):
             QTimer.singleShot(750, lambda: self.overlay.again_button.setDisabled(False)) # Prevents accidentally restarting/exiting
             QTimer.singleShot(750, lambda: self.overlay.home_button.setDisabled(False)) # Prevents accidentally restarting/exiting
 
-    def clear_all_moles(self): #function name
+    def clear_all_moles(self):
         for button in self.buttons:
             button.setText("")
 
-    def assess_score(self): #function name
+    def assess_score(self):
         if self.total_mole_movements == 0: #prevents ZeroDivisionError from ever occurring
             self.accuracy = -1
             self.misses = 0
@@ -605,23 +617,19 @@ class MyFirstWindow(QMainWindow):
         if self.accuracy == -1:
             print("Result was not appended.")
             return
+        result = (
+            f"Game Instance created: {self.now};\\n"
+            f"Finished in {self.game_duration} seconds;\\n"
+            f"Score: {self.successful_hits};\\n"
+            f"Misses: {self.misses};\\n"
+            f"Accuracy: {round(self.accuracy, 1)}%;\\n"
+            f"Rank: {self.rank}\\n\\n"
+        ) 
         # debugging #
-        print(f"Game Instance created: {self.now};")
-        print(f"Finished in {self.game_duration} seconds;")
-        print(f"Score: {self.successful_hits};")
-        print(f"Misses: {self.misses};")
-        print(f"Accuracy: {round(self.accuracy, 1)}%;")
-        print(f"Rank: {self.rank}")
+        print(result, end="")
         # debugging #    
-
         with open("score.txt", "a", encoding="utf-8") as file: #only records score when player actually finishes a game without exiting (might change in the future)
-            file.write(f"Game Instance created: {self.now};\n")
-            file.write(f"Finished in {self.game_duration} seconds;\n")
-            file.write(f"Score: {self.successful_hits};\n")
-            file.write(f"Misses: {self.misses};\n")
-            file.write(f"Accuracy: {round(self.accuracy, 1)}%;\n")
-            file.write(f"Rank: {self.rank}\n\n")
-        print("Appended score to text file at TBA Path") #debugging for those who can't find their score.txt (future)
+            file.write(result)
 
     def clear_score(self): #developer function
         with open("score.txt", "w", encoding="utf-8") as file:
