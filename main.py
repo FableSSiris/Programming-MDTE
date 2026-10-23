@@ -22,18 +22,27 @@ from PyQt6.QtWidgets import (
 
 DEFAULT_MOLE_COUNT = 2  # max moles that can spawn per game, can be changed
 DEFAULT_GRID_SIZE = 4  # default 4x4; can be changed to 3x3 or 5x5 in settings
-mole_speed_min = 900  # mole moves earliest after this many ms
-mole_speed_max = 1500  # mole moves latest after this many ms
+MOLE_SPEED_MIN = 900  # mole moves earliest after this many ms
+MOLE_SPEED_MAX = 2000  # mole moves latest after this many ms
 DEFAULT_GAME_DURATION = 20  # in seconds
-GRID_AREA_SIZE = 800
-GRID_SPACING = 10
+GRID_AREA_SIZE = 800 # px
+GRID_SPACING = 10 # px
+CONVERSION_CONSTANT = 3
+REFLEX_WEIGHTING = 0.7 # sets how much scoring contributes towards accuracy weight
+PRECISION_WEIGHTING = 1 - REFLEX_WEIGHTING # set remaining weight to precision accuracy (missed clicks)
+PREPARATION_DELAY = 2000 # milliseconds
+END_SCREEN_BUTTON_DELAY = 750 # ms
+BUTTON_ANIMATION_DELAY = 75 # ms
+MIN_GAME_DURATION = 15 # seconds
+MAX_GAME_DURATION = 60 # seconds
 
-class EndScreenWidget(QWidget): 
-    """Display the end-game results over the gameplay screen."""  
+
+class EndScreenWidget(QWidget):
+    """Display the end-game results over the gameplay screen."""
     def __init__(
-        self, 
+        self,
         home_callback,  # argument that accepts a function
-        play_again_callback, #---
+        play_again_callback,  # function
         parent=None  # argument to set a parent when class is called
     ):
         super().__init__(parent)
@@ -45,7 +54,7 @@ class EndScreenWidget(QWidget):
             #overlay {
                 background: #289911;
                 border-radius: 15px;
-                border: 4px solid #ffff21;    
+                border: 4px solid #ffff21;
             }
         """)
 
@@ -54,7 +63,7 @@ class EndScreenWidget(QWidget):
         endscreen_layout.setSpacing(0)
         button_layout = QHBoxLayout()
         button_layout.setSpacing(12)
-        
+
         # Add some content to the overlay
         self.label = QLabel("Rank:", alignment=Qt.AlignmentFlag.AlignCenter)
         self.label.setMinimumHeight(120)
@@ -85,11 +94,11 @@ class EndScreenWidget(QWidget):
         button_layout.addWidget(self.again_button)
 
         endscreen_layout.addWidget(
-            self.label, 
+            self.label,
             alignment=Qt.AlignmentFlag.AlignTop
         )
         endscreen_layout.addWidget(
-            self.score_label, 
+            self.score_label,
             alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignCenter
         )
         endscreen_layout.addSpacing(50)
@@ -106,7 +115,7 @@ class EndScreenWidget(QWidget):
         border_radius,
     ):
         return f"""
-            *{{
+            QLabel {{
                 color: {color};
                 background: {background};
                 font-size: {font_size}px;
@@ -117,7 +126,7 @@ class EndScreenWidget(QWidget):
             }}
         """
 
-    def button_style(  # turns repetitive button stylesheets into one setting, reducing redundancy
+    def button_style(
         self,
         background,
         hover_background,
@@ -127,38 +136,39 @@ class EndScreenWidget(QWidget):
         hover_color="black"
     ):
         return f"""
-            *{{
+            QPushButton {{
                 background: {background};
                 color: {color};
                 font-family: '{font}';
                 font-size: {font_size}px;
             }}
-            *:hover{{
+            QPushButton:hover{{
                 background: {hover_background};
                 color: {hover_color};
             }}
         """
-                
 
-class MyFirstWindow(QMainWindow):
+
+class WhackAMoleWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.game_duration = DEFAULT_GAME_DURATION
         self.mole_count = DEFAULT_MOLE_COUNT
         self.grid_size = DEFAULT_GRID_SIZE
         """
-        The variable below is a checker for anything that calls the mole_move functions;
-        Once a new game starts, prevents any zombie instances from creating complications, 
-        especially ones that require a recursive QTimer.
+        The variable below is a checker for anything that calls the
+        mole_move functions; Once a new game starts, prevents any zombie
+        instances from creating complications, especially ones that
+        require a recursive QTimer.
         """
-        self.game_id = 0  
+        self.game_id = 0
         self.display_time = self.game_duration
         self.countdown_timer = QTimer(self) #display timer
         self.countdown_timer.timeout.connect(self.countdown)
 
         self.setWindowTitle("Whack a mole")
         self.resize(1000, 1000)
-        self.preset_home_menu()  
+        self.preset_home_menu()
         self.preset_settings()
         self.preset_game_graphics()
 
@@ -170,8 +180,8 @@ class MyFirstWindow(QMainWindow):
 
         self.setCentralWidget(self.pages)
         self.pages.setCurrentWidget(self.menu_widget)
-        
-    def preset_home_menu(self):  
+
+    def preset_home_menu(self):
         """Pre-loads home menu onto a stackedLayout."""
         self.menu_widget = QWidget()
         self.menu_widget.setMinimumSize(1000, 1000)
@@ -188,10 +198,10 @@ class MyFirstWindow(QMainWindow):
         )
 
         start_game_button = QPushButton("Start Game")
-        start_game_button.clicked.connect(self.load_game_instance)
+        start_game_button.clicked.connect(self.start_game)
         start_game_button.setStyleSheet(
             self.button_style(
-                "lightgreen", 'green', 'Consolas', 
+                "lightgreen", 'green', 'Consolas',
                 hover_color="white", border="2px solid black", border_radius=10
             )
         )
@@ -200,7 +210,7 @@ class MyFirstWindow(QMainWindow):
         settings_button.clicked.connect(self.load_settings)
         settings_button.setStyleSheet(
             self.button_style(
-                "#ffc640", "#6e5314", "Consolas", 
+                "#ffc640", "#6e5314", "Consolas",
                 hover_color="white", border="2px solid black", border_radius=10
             )
         )
@@ -208,27 +218,19 @@ class MyFirstWindow(QMainWindow):
         for button in (start_game_button, settings_button):
             button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             button.setMinimumSize(400, 120)
-        
-        clear_score_button = QPushButton("clear score", parent=self.menu_widget)  # developer function
-        clear_score_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))  # developer function
-        clear_score_button.setStyleSheet(
-            "color: grey; background: white; border: 1px solid black"
-        )  # developer function
-        clear_score_button.move(20, 10)  # developer function
-        clear_score_button.clicked.connect(self.clear_score)  # developer function caller (will be removed later)
 
         menu_layout.addWidget(
-            menu_title, 
+            menu_title,
             alignment=Qt.AlignmentFlag.AlignCenter
         )
         menu_layout.addSpacing(70)
         menu_layout.addWidget(
-            start_game_button, 
+            start_game_button,
             alignment=Qt.AlignmentFlag.AlignCenter
         )
         menu_layout.addSpacing(10)
         menu_layout.addWidget(
-            settings_button, 
+            settings_button,
             alignment=Qt.AlignmentFlag.AlignCenter
         )
 
@@ -258,30 +260,30 @@ class MyFirstWindow(QMainWindow):
             )
         )
         self.label_layout.addWidget(
-            self.timer_ui, 
+            self.timer_ui,
             alignment=Qt.AlignmentFlag.AlignCenter
         )
         self.label_layout.setSpacing(0)
         self.label_layout.addWidget(
-            self.score_ui, 
+            self.score_ui,
             alignment=Qt.AlignmentFlag.AlignCenter
         )
 
-        self.grid_container = QWidget()
+        self.grid_container = QWidget() # Helps with centering the button grid layout, without changing much formatting
         self.grid_layout = QGridLayout(self.grid_container)
         self.grid_layout.setContentsMargins(0, 0, 0, 0)
         self.grid_layout.setSpacing(10)
-        self.update_grid_size(self.grid_size - 3)  # initial grid layout load
-     
+        self.update_grid_size(self.grid_size - CONVERSION_CONSTANT)  # initial grid layout load
+
         self.game_layout = QVBoxLayout(self.game_widget)
         self.game_layout.setContentsMargins(0, 0, 0, 20)
         self.game_layout.addLayout(self.label_layout)
         self.game_layout.addWidget(
             self.grid_container, alignment=Qt.AlignmentFlag.AlignCenter
         )
-        self.overlay = EndScreenWidget(  # calls EndScreenWidget class as an object in MyFirstWindow
-            self.load_home, 
-            self.load_game_instance, 
+        self.overlay = EndScreenWidget(  # calls EndScreenWidget class as an object in WhackAMoleWindow
+            self.load_home,
+            self.start_game,
             self.game_widget
         )
 
@@ -300,9 +302,9 @@ class MyFirstWindow(QMainWindow):
         return_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         return_button.setStyleSheet(
             self.button_style(
-                "white", 
-                font_size=40, 
-                color="black", 
+                "white",
+                font_size=40,
+                color="black",
                 border="1px solid black",
             )
         )
@@ -310,38 +312,38 @@ class MyFirstWindow(QMainWindow):
         self.input_mole_count = QLineEdit()
         self.input_mole_count.setPlaceholderText("Change mole count here.")
         self.input_mole_count.returnPressed.connect(self.change_mole_count)
-        self.input_mole_count.setStyleSheet(
-            self.label_style(
-                None,
-                None,
-                "2px solid 'lightgreen'",
-                20,
-                40,
-            )
-        )
+        self.input_mole_count.setStyleSheet("""
+            background: #4c4d4c;
+            font-family: 'Times New Roman';
+            border: 2px solid black;
+            border-radius: 20px;
+            font-size: 40px;
+        """)
 
         display_grid_setting = QLabel(
-            "Grid Layout", 
+            "Grid Layout",
             alignment=Qt.AlignmentFlag.AlignCenter
         )
         display_grid_setting.setStyleSheet(
             self.label_style(
                 "black",
                 "White",
-                "2px solid 'darkgreen'",
+                "2px solid darkgreen",
                 20,
                 30
             )
         )
 
-        self.set_grid_size = QComboBox() #dropdown menu for {variable name}
+        self.set_grid_size = QComboBox()
         """
         The grid setup is robust enough that I can add unconventional grids sizes
         to the following and it would still work to an extent
         """
-        self.set_grid_size.addItems(["3x3", "4x4", "5x5", "6x6 (experimental)", "7x7 (what)"])
-        self.set_grid_size.setCurrentIndex(self.grid_size - 3)  # 3x3 grid size is index 0, 4x4 is 1, etc. ^^^^                
-        self.set_grid_size.currentIndexChanged.connect(self.update_grid_size) 
+        self.set_grid_size.addItems(
+            ["3x3", "4x4", "5x5", "6x6 (experimental)", "7x7 (experimental)"]
+        )
+        self.set_grid_size.setCurrentIndex(self.grid_size - CONVERSION_CONSTANT)  # 3x3 grid size is index 0, 4x4 is 1, etc. ^^^^
+        self.set_grid_size.currentIndexChanged.connect(self.update_grid_size)
         self.set_grid_size.setStyleSheet("""
             font-size: 40px;
             font-family: 'Times New Roman';
@@ -354,15 +356,14 @@ class MyFirstWindow(QMainWindow):
         )
         self.display_game_duration.setMinimumSize(300, 50)
         self.display_game_duration.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.display_game_duration.setStyleSheet("""
-            font-size: 30px;
-            color: black;
-            border: 2px solid 'darkgreen';
-            background: white;
-            font-family: 'Times New Roman'
-        """)
+        self.display_game_duration.setStyleSheet(
+            self.label_style(
+                "black", "white", "2px solid darkgreen", 20, 30
+            )
+        )
 
         set_game_time = QSlider(Qt.Orientation.Horizontal)
+        set_game_time.setRange(MIN_GAME_DURATION, MAX_GAME_DURATION)
         set_game_time.setValue(self.game_duration)
         set_game_time.valueChanged.connect(self.change_game_duration)
         set_game_time.sliderReleased.connect(
@@ -385,7 +386,18 @@ class MyFirstWindow(QMainWindow):
             }
         """)
         set_game_time.setMinimumSize(800, 50)
-        set_game_time.setRange(5, 180)
+
+        self.display_mole_count = QLabel(f"Mole: {self.mole_count}")
+        self.display_mole_count.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.display_mole_count.setStyleSheet(
+            self.label_style(
+                "black", "white", "2px solid darkgreen", 10, 30
+            )
+        )
+
+        mole_count_layout = QHBoxLayout()
+        mole_count_layout.addWidget(self.input_mole_count, stretch=8)
+        mole_count_layout.addWidget(self.display_mole_count, stretch=1)
 
         grid_setting_layout.addWidget(display_grid_setting, stretch=1)
         grid_setting_layout.addWidget(self.set_grid_size, stretch=5)
@@ -396,7 +408,7 @@ class MyFirstWindow(QMainWindow):
         slider_layout.setContentsMargins(40, 0, 40, 0)
 
         settings_layout.addWidget(return_button, alignment=Qt.AlignmentFlag.AlignCenter)
-        settings_layout.addWidget(self.input_mole_count)
+        settings_layout.addLayout(mole_count_layout)
         settings_layout.addSpacing(200)
         settings_layout.addLayout(grid_setting_layout)
         settings_layout.addSpacing(200)
@@ -405,15 +417,13 @@ class MyFirstWindow(QMainWindow):
 
     def update_grid_size(self, index):
         """
-        Three things this function does.
-        1. Creates the grid layout on initialization.
-        2. Updates grid size (UI/value) directly 
-        when the player-selected dropdown menu fires a signal.
-        3. If the updated grid size was smaller than the old grid size, 
-        automatically reduces mole_count to a number.
+        Creates the grid layout on initialization.
+        Updates grid size (UI/value) directly when the player-selected
+        dropdown menu fires a signal. If the updated grid size was smaller
+        than the old grid size, automatically reduces mole_count to a number.
         within the boundary of total holes to prevent Overflow that crashes the game.
         """
-        self.grid_size = index + 3
+        self.grid_size = index + CONVERSION_CONSTANT
         self.hole_size = (
             GRID_AREA_SIZE - (self.grid_size - 1) * GRID_SPACING
         ) // self.grid_size
@@ -424,6 +434,7 @@ class MyFirstWindow(QMainWindow):
             self.input_mole_count.setPlaceholderText(
                 f"Changed mole count to {self.mole_count}"
             )
+            self.display_mole_count.setText(f"Moles: {self.mole_count}")
 
         # Remove old buttons before creating new grid
         while self.grid_layout.count():
@@ -438,7 +449,7 @@ class MyFirstWindow(QMainWindow):
         for i in range(self.grid_size):
             self.grid_layout.setRowStretch(i, 1)
             self.grid_layout.setColumnStretch(i, 1)
-        for row in range(self.grid_size): 
+        for row in range(self.grid_size):
             for col in range(self.grid_size):
                 button = QPushButton("")
                 button.setMinimumSize(int(self.hole_size * 1.5), self.hole_size)
@@ -451,9 +462,9 @@ class MyFirstWindow(QMainWindow):
                 self.grid_layout.addWidget(button, row, col)
                 # stores created button instances into an array so it can be checked later
                 self.buttons.append(button)
-                button.clicked.connect(self.whack)  # detects button click and calls whack function
+                button.clicked.connect(self.whack)
         self.grid_layout.activate()
-        self.grid_container.adjustSize()
+        self.grid_container.adjustSize() # container accomodates to the button grid instead of otherwise vice versa
         print(f"Grid size set to {self.grid_size}x{self.grid_size}")
 
     def change_game_duration(self, value):
@@ -479,6 +490,7 @@ class MyFirstWindow(QMainWindow):
                 self.input_mole_count.setPlaceholderText(
                     f"Changed mole count to {value}"
                 )
+                self.display_mole_count.setText(f"Mole: {self.mole_count}")
         except ValueError:
             self.input_mole_count.clear()
             self.input_mole_count.setPlaceholderText("Invalid integer")
@@ -494,7 +506,8 @@ class MyFirstWindow(QMainWindow):
             color: white;
             font-size: {font_size}px;
         """
-    def button_style(  
+
+    def button_style(
         self,
         background,
         hover_background=None,
@@ -502,7 +515,7 @@ class MyFirstWindow(QMainWindow):
         font_size=30,
         color="black",
         hover_color=None,
-        border=None,
+        border="none",
         border_radius=0
     ):
         """
@@ -515,7 +528,7 @@ class MyFirstWindow(QMainWindow):
             hover_color = color
 
         return f"""
-            *{{
+            QPushButton{{
                 background: {background};
                 color: {color};
                 font-family: '{font}';
@@ -523,13 +536,13 @@ class MyFirstWindow(QMainWindow):
                 border: {border};
                 border-radius: {border_radius}px;
             }}
-            *:hover{{
+            QPushButton:hover{{
                 background: {hover_background};
                 color: {hover_color};
             }}
         """
 
-    def label_style( 
+    def label_style(
         self,
         color,
         background,
@@ -537,12 +550,12 @@ class MyFirstWindow(QMainWindow):
         border_radius,
         font_size,
         font_family="'Times New Roman'",
-        font_style=None,
-        font_weight=None,
+        font_style="normal",
+        font_weight="normal",
     ):
         """A separate styling function for labels without formatting hover."""
         return f"""
-            *{{
+            QLabel {{
                 color: {color};
                 background: {background};
                 font-size: {font_size}px;
@@ -558,17 +571,18 @@ class MyFirstWindow(QMainWindow):
         self.overlay.hide()
         self.pages.setCurrentWidget(self.menu_widget)
 
-    def load_settings(self): 
+    def load_settings(self):
         self.overlay.hide()
-        self.input_mole_count.setPlaceholderText("Change mole count here.")  # refreshes upon each entry 
+        self.input_mole_count.setPlaceholderText("Change mole count here.")  # refreshes upon each entry
         self.pages.setCurrentWidget(self.settings_widget)
 
-    def load_game_instance(self):  # triggered by events only, reducing background processing
+    def start_game(self):  # triggered by events only, reducing background processing
         # invalidate previous game callbacks, reset the board, score, and moles
         self.game_id += 1
         self.clear_all_moles()
 
-        self.total_mole_movements = 0  # counts the total potential points in any single game
+        self.mole_escaped = 0
+        self.empty_hits = 0
         self.successful_hits = 0
         self.score_ui.setText(f"Score: {self.successful_hits}")
         self.display_time = self.game_duration
@@ -576,11 +590,21 @@ class MyFirstWindow(QMainWindow):
 
         self.pages.setCurrentWidget(self.game_widget)  # puts the gameplay screen on the main window
         self.overlay.hide()
-        
+
         QTimer.singleShot(0, self.resize_overlay)
 
+        game_id = self.game_id
+
         self.now = datetime.now().strftime("%d/%m/%Y, %I:%M %p")
-        QTimer.singleShot(2000, self.run_game_instance)  # runs game instance after 2 seconds
+        QTimer.singleShot(
+            PREPARATION_DELAY,
+            lambda: (
+                self.run_game_instance()
+                if game_id == self.game_id
+                else None
+            )
+
+        )  # runs game instance after 2 seconds
 
     def resize_overlay(self):  # helper function because the overlay QLabel's size is janky when first loaded
         parent_rect = self.game_widget.rect()
@@ -598,10 +622,11 @@ class MyFirstWindow(QMainWindow):
         )
         self.overlay.raise_()
 
-    def run_game_instance(self):  # starts game, initiates moles, spawns a mole per mole count every 
+    def run_game_instance(self):
+        """Starts game, initiates moles, spawns a mole per mole count every spawn_timer(delay) seconds."""
         self.timer_ui.setText(f"Time: {self.game_duration}s")
-        
-        self.mole_queue = [] 
+
+        self.mole_queue = []
         if len(self.mole_queue) == 0:  # check for an empty list before actually appending moles else they duplicate
             for i in range(self.mole_count):
                 self.mole_queue.append(f"MOLE{i}")
@@ -618,49 +643,47 @@ class MyFirstWindow(QMainWindow):
 
         self.start_next()
 
-    def countdown(self): #add game start countdown ui later
-        #get the current time and set it on the label
+    def countdown(self):
+        """Get live game countdown and display it on self.timer_ui."""
         if self.display_time > 0:
             self.display_time -= 1
             self.timer_ui.setText(f"Time: {self.display_time}s")
         else:
             self.countdown_timer.stop()
-            
+
     def whack(self):
         """
-        When the mole is whacked, handles score updates and also resets mole_move().
+        When the mole is whacked, updates score,
+        moves mole to a different hole, and reset mole movement.
         """
-        button = self.sender() 
+        button = self.sender()
         if button.text() != "":
             mole = button.text()
-            self.mole_move(button, mole, self.game_id)
-            self.whack_effect(button, True)
+            self.mole_move(button, mole, self.game_id, is_missed=False)
+            self.whack_effect(button, is_hit=True)
             button.setText("")
             self.successful_hits += 1
             self.score_ui.setText(f"Score: {self.successful_hits}")
         else:
-            self.total_mole_movements += 1
+            self.empty_hits += 1
             self.whack_effect(button)
 
     def whack_effect(self, button, is_hit=False):
-        """Performs click animation corresponding to whack()."""  
-        original_style = button.styleSheet()  # temporary file that stores stylesheet string
-        border = "10px solid #39fc03" if is_hit else "9px solid #DFE0F2"
+        """Performs click animation corresponding to whack(). Detects if a mole was inside and changes colour."""
+        border_style = "10px solid #39fc03" if is_hit else "9px solid #DFE0F2"
         button.setStyleSheet(
-            f"{original_style}\n"
-            f"QPushButton {{ border: {border}; }}"
+            self.mole_hole_style() + f"""border: {border_style}"""
         )
-        temp_file = button.styleSheet()
         QTimer.singleShot(
-            75, 
+            BUTTON_ANIMATION_DELAY,
             lambda: button.setStyleSheet(
-                temp_file + "border: 7px solid #DFE0F2;"
+               self.mole_hole_style()
             )
         )
 
-    def start_next(self):  
+    def start_next(self):
         """
-        Prepares next mole appearing during start up 
+        Prepares next mole appearing during start up
         if max mole count has not been reached.
         """
         if self.mole_index < len(self.mole_queue):
@@ -669,7 +692,7 @@ class MyFirstWindow(QMainWindow):
         else:
             self.spawn_timer.stop()
 
-    def next_mole(self):  
+    def next_mole(self):
         """Calls for next mole if max mole hasn't been reached."""
         mole_num = self.mole_queue[self.mole_index]
 
@@ -677,57 +700,64 @@ class MyFirstWindow(QMainWindow):
 
         self.mole_index += 1
         self.start_next()
-        
+
     def create_moles(self, mole_num):
         """
         Displays mole text on the board, terminates once max moles have been reached
         """
         empty_buttons = [button for button in self.buttons if button.text() == ""]  # vacancy condition for spawning a mole
 
-        if empty_buttons:  # checks for a vacant button to place the mole
-            vacancy = random.choice(empty_buttons)  # picks a random valid location to spawn the mole
-            vacancy.setText(mole_num)
+        if not empty_buttons:  # checks for a non-vacant button to place the mole
+            return # this safe locks so that even if the *initial* mole count is set to larger than grid size,
+        # the system would recognise that the grid is full and stop creating additional moles
 
-            print(f"Created {mole_num}")  # this is for debugging
+        vacancy = random.choice(empty_buttons)  # picks a random valid location to spawn the mole
+        vacancy.setText(mole_num)
 
-        move_time = random.randint(mole_speed_min, mole_speed_max)
+        print(f"Created {mole_num}")
+
+        move_time = random.randint(MOLE_SPEED_MIN, MOLE_SPEED_MAX)
         current_game = self.game_id
+
         QTimer.singleShot(
-            move_time, 
+            move_time,
             lambda: self.mole_move(
-                vacancy, 
-                mole_num, 
-                current_game
+                vacancy,
+                mole_num,
+                current_game,
             )
         ) # code for forcing mole to move after a set time
-        
-    def mole_move(self, button, which_mole, game_id):
-        """Controls each and every mole separately, through which_mole."""  
+
+    def mole_move(self, button, which_mole, game_id, is_missed=True):
+        """Controls each and every mole separately, through which_mole and button arguments."""
         if game_id != self.game_id:  # ignore delayed callbacks to an older game
             return
 
         if button.text() != which_mole: #stop & reset the move timer if this mole has been hit and moved forcibly
             return
-        
+
         empty_buttons = [
-            bt for bt in self.buttons 
-            if bt.text() == ""
-            ]  # checks for all empty locations that a mole can move to
+            btn for btn in self.buttons
+            if btn.text() == ""
+            ]  # checks for all empty locations that a mole can move to.
 
-        move_time = random.randint(mole_speed_min, mole_speed_max)
-        
-        if empty_buttons: 
-            button.setText("") 
-            vacancy = random.choice(empty_buttons)  # checks for a vacant button to move the mole
-            vacancy.setText(which_mole)
-            self.total_mole_movements += 1  # adds a count to total potential points
+        if not empty_buttons: #terminates the function if moles somehow exceed or equal total holes
+            return # This is a secondary safe lock if both create_moles() & self.mole_count conditioning fails
 
-            current_game = self.game_id
+        move_time = random.randint(MOLE_SPEED_MIN, MOLE_SPEED_MAX)
+        button.setText("")
+        vacancy = random.choice(empty_buttons)  # checks for a vacant button to move the mole
+        vacancy.setText(which_mole)
 
-            QTimer.singleShot( # fires recursive function once a mole has moved, cycling endlessly until the timer hits 0.
-                move_time,
-                lambda: self.mole_move(vacancy, which_mole, current_game) 
-            )
+        if is_missed:
+            self.mole_escaped += 1  # Count a mole that moved before being hit
+
+        current_game = self.game_id
+
+        QTimer.singleShot( # fires recursive function once a mole has moved, cycling endlessly until the timer hits 0.
+            move_time,
+            lambda: self.mole_move(vacancy, which_mole, current_game)
+        )
 
     def end_game_instance(self):
         self.spawn_timer.stop()
@@ -749,72 +779,89 @@ class MyFirstWindow(QMainWindow):
             they could undesirably exit the endscreen, so both buttons are locked for 0.75 seconds on show
             to give them enough reaction time.
             """
-            self.overlay.again_button.setDisabled(True) 
-            self.overlay.home_button.setDisabled(True)  
+            self.overlay.again_button.setDisabled(True)
+            self.overlay.home_button.setDisabled(True)
             self.overlay.show()
-            QTimer.singleShot(750, lambda: self.overlay.again_button.setDisabled(False)) 
-            QTimer.singleShot(750, lambda: self.overlay.home_button.setDisabled(False)) 
+            QTimer.singleShot(
+                END_SCREEN_BUTTON_DELAY,
+                lambda: self.overlay.again_button.setDisabled(False)
+            )
+            QTimer.singleShot(
+                END_SCREEN_BUTTON_DELAY,
+                lambda: self.overlay.home_button.setDisabled(False)
+            )
 
     def clear_all_moles(self):
         for button in self.buttons:
             button.setText("")
 
-    def assess_score(self):  
+    def assess_score(self):
         """
-        Score accuracy is based off hits over hits + misses (total_mole_movements). A miss is counted when 
-            1. A mole moves after not immediately being hit 
+        Total accuracy is based off a weighted average of both precision and reflex.
+        Precision measures hits against all player clicks; reflex measures hit against
+        hits and escaped moles.
+        A miss is counted when
+            1. A mole moves after not immediately being hit
             2. The player hits an empty hole
-        It is imperative that the player does not click blindly;
-        """  
-        if self.total_mole_movements == 0: #prevents ZeroDivisionError from ever occurring
-            self.accuracy = -1
+        """
+        attempts = self.successful_hits + self.empty_hits
+        total_mole_movements = self.successful_hits + self.mole_escaped
+        self.misses = self.empty_hits + self.mole_escaped
+
+        if total_mole_movements == 0: #prevents ZeroDivisionError from ever occurring
+            self.composite_accuracy = -1
             self.misses = 0
             return
 
-        self.accuracy = (self.successful_hits / self.total_mole_movements) * 100
+        if attempts == 0:
+            precision_accuracy = 0
+        else:
+            precision_accuracy = (self.successful_hits / attempts) * 100
 
-        self.misses = self.total_mole_movements - self.successful_hits
+        reflex_accuracy = (self.successful_hits / total_mole_movements) * 100
+        self.composite_accuracy = (
+            reflex_accuracy * REFLEX_WEIGHTING + precision_accuracy * PRECISION_WEIGHTING
+        )
 
     def evaluate_rank(self):
-        """Evaluates final rank based on accuracy."""
-        if self.accuracy >= 95:
+        """Evaluates final rank based on composite accuracy, counting both empty holes and missed moles"""
+        if self.composite_accuracy >= 95:
             self.rank = "S"
-        elif self.accuracy >= 80:
+        elif self.composite_accuracy >= 80:
             self.rank = "A"
-        elif self.accuracy >= 60:
+        elif self.composite_accuracy >= 60:
             self.rank = "B"
-        elif self.accuracy >= 40:
+        elif self.composite_accuracy >= 40:
             self.rank = "C"
-        elif self.accuracy >= 10:
+        elif self.composite_accuracy >= 10:
             self.rank = "D"
-        elif self.accuracy >= 0:
+        elif self.composite_accuracy >= 0:
             self.rank = "F"
-        else:    
+        else:
             self.rank = "undefined"
 
-    def append_score(self): #records the score in a text document
-        if self.accuracy == -1:
+    def append_score(self):
+        if self.composite_accuracy == -1:
             print("Result was not appended.")
             return
         result = (
             f"Game Instance created: {self.now};\n"
             f"Finished in {self.game_duration} seconds;\n"
             f"Score: {self.successful_hits};\n"
-            f"Misses: {self.misses};\n"
-            f"Accuracy: {round(self.accuracy, 1)}%;\n"
+            f"Missed Clicks: {self.empty_hits};\n"
+            f"Missed Moles: {self.mole_escaped};\n"
+            f"Accuracy: {round(self.composite_accuracy, 1)}%;\n"
             f"Rank: {self.rank}\n\n"
-        ) 
-        # debugging #
-        print(result, end="")
-        # debugging #    
-        with open("score.txt", "a", encoding="utf-8") as file: 
-            #only records score when player actually finishes a game without exiting
-            file.write(f"{result}")
+        )
 
-    def clear_score(self): #developer function (will be removed later)
-        with open("score.txt", "w", encoding="utf-8"):
-            pass
-        print("cleared score.txt")
+        print(result, end="")
+
+        try:
+            with open("score.txt", "a", encoding="utf-8") as file:
+                #only records score when player actually finishes a game without exiting
+                file.write(result)
+        except OSError: # handles cases where the file cannot be opened (e.g. encrypted files)
+            print(f"Could not save score: {OSError}")
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -822,8 +869,8 @@ class MyFirstWindow(QMainWindow):
         if hasattr(self, "overlay"):
             self.resize_overlay()
 
-           
+
 app = QApplication(sys.argv)
-window = MyFirstWindow()
+window = WhackAMoleWindow()
 window.show()
 sys.exit(app.exec())
