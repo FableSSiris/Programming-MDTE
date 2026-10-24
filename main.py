@@ -1,3 +1,7 @@
+"""
+Whack-A-Mole game built with PyQt6.
+"""
+
 import random
 import sys
 from datetime import datetime
@@ -20,10 +24,6 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-"""
-Whack-A-Mole game built with PyQt6.
-"""
-
 DEFAULT_MOLE_COUNT = 2  # max moles that can spawn per game, can be changed
 DEFAULT_GRID_SIZE = 4  # default 4x4; can be changed to 3x3 or 5x5 in settings
 MOLE_SPEED_MIN = 900  # mole moves earliest after this many ms
@@ -31,8 +31,8 @@ MOLE_SPEED_MAX = 2000  # mole moves latest after this many ms
 DEFAULT_GAME_DURATION = 15  # in seconds
 GRID_AREA_SIZE = 800 # px
 GRID_SPACING = 10 # px
-CONVERSION_CONSTANT = 3 # Helps set grid size using index values from set_grid_size dropdown; assumes index0 is "3x3"
-REFLEX_WEIGHTING = 0.7 # sets how much scoring contributes towards accuracy weight
+INDEX_TO_GRID = 3 # converts combo box index 0 - 4 to grid size 3 - 7
+REFLEX_WEIGHTING = 0.7 # sets how much scores contribute towards accuracy weight
 PRECISION_WEIGHTING = 1 - REFLEX_WEIGHTING # set remaining weight to precision accuracy (missed clicks)
 PREPARATION_DELAY = 2000 # milliseconds
 END_SCREEN_BUTTON_DELAY = 750 # ms
@@ -161,16 +161,32 @@ class WhackAMoleWindow(QMainWindow):
         self.game_duration = DEFAULT_GAME_DURATION
         self.mole_count = DEFAULT_MOLE_COUNT
         self.grid_size = DEFAULT_GRID_SIZE
-        """
-        Checker for anything that calls the
-        create_mole, mole_move, and QTimer functions; Once a new game starts, prevents any zombie
-        callbacks from creating complications, especially ones that
-        require a recursive QTimer.
-        """
+        # Below variables are defined inside __init__ first to prevent attribute errors.
+        self.hole_size = None # becomes a derived value later
+        self.buttons = []
+        self.composite_accuracy = 0
+        self.mole_missed = 0
+        self.empty_hits = 0
+        self.successful_hits = 0
+        self.now = None # gets datetime in a later function.
+        self.mole_queue = []
+        self.mole_index = 0
+        self.rank = None
+        # Checker for anything that calls the create_mole, mole_move, and QTimer functions;
+        # Once a new game starts, prevents any zombie callbacks from creating complications
+        # especially ones that require a recursive QTimer.
         self.game_id = 0
+        #Similar implementation as self.game_id, instead storing individual mole "tokens" that rejects
+        #old mole_move() callbacks, ensuring only one timer fires a time, and prevents unpredictable movements.
+        self.mole_tokens = {}
+
         self.display_time = self.game_duration # linked to timer label in gameplay widget
         self.countdown_timer = QTimer(self) # Recursive timer that reduces display time by one every second
         self.countdown_timer.timeout.connect(self.countdown)
+
+        self.spawn_timer = QTimer(self) # Recursive timer that spawns moles on intervals
+        self.spawn_timer.setSingleShot(True)
+        self.spawn_timer.timeout.connect(self.next_mole)
 
         self.setWindowTitle("Whack a mole")
         self.resize(1000, 1000)
@@ -183,8 +199,8 @@ class WhackAMoleWindow(QMainWindow):
         self.pages.addWidget(self.game_widget)
         self.pages.addWidget(self.settings_widget)
 
-        self.setCentralWidget(self.pages) # Allows Qt to remember every
-        self.pages.setCurrentWidget(self.menu_widget)
+        self.setCentralWidget(self.pages) # Allows Qt to remember every loaded widget at once
+        self.pages.setCurrentWidget(self.menu_widget) # this allows switching between them instantly
 
     def preset_home_menu(self):
         """Pre-loads home widgets, layouts and stylesheets."""
@@ -275,11 +291,11 @@ class WhackAMoleWindow(QMainWindow):
             alignment=Qt.AlignmentFlag.AlignCenter
         )
 
-        self.grid_container = QWidget() # Helps with centering the button grid layout without changing much formatting
+        self.grid_container = QWidget() # Keeps button grid centred independent of root layouts
         self.grid_layout = QGridLayout(self.grid_container)
         self.grid_layout.setContentsMargins(0, 0, 0, 0)
         self.grid_layout.setSpacing(10)
-        self.update_grid_size(self.grid_size - CONVERSION_CONSTANT)  # initial grid layout load
+        self.update_grid_size(self.grid_size - INDEX_TO_GRID)  # initial grid layout load
 
         self.game_layout = QVBoxLayout(self.game_widget)
         self.game_layout.setContentsMargins(0, 0, 0, 20)
@@ -292,8 +308,6 @@ class WhackAMoleWindow(QMainWindow):
             self.start_game,
             self.game_widget # so the overlay shows on the correct widget
         )
-
-        self.mole_queue = []  # list that contains the id of each mole
 
     def preset_settings(self):
         """Pre-loads settings menu widgets, layouts and stylesheets."""
@@ -342,13 +356,13 @@ class WhackAMoleWindow(QMainWindow):
         )
 
         self.set_grid_size = QComboBox()
-        """
-        The grid setup accepts 3x3, 4x4, 5x5, but also works with slightly bigger numbers
-        """
+        #The grid setup accepts 3x3, 4x4, 5x5
+        #But also works with slightly bigger numbers
         self.set_grid_size.addItems(
             ["3x3", "4x4", "5x5", "6x6 (experimental)", "7x7 (experimental)"]
         )
-        self.set_grid_size.setCurrentIndex(self.grid_size - CONVERSION_CONSTANT)  # 3x3 grid size is index 0, 4x4 is 1, etc.
+        # 3x3 grid size is index 0, 4x4 is 1, etc.
+        self.set_grid_size.setCurrentIndex(self.grid_size - INDEX_TO_GRID)
         self.set_grid_size.currentIndexChanged.connect(self.update_grid_size)
         self.set_grid_size.setStyleSheet("""
             font-size: 40px;
@@ -372,9 +386,6 @@ class WhackAMoleWindow(QMainWindow):
         set_game_time.setRange(MIN_GAME_DURATION, MAX_GAME_DURATION)
         set_game_time.setValue(self.game_duration)
         set_game_time.valueChanged.connect(self.change_game_duration)
-        set_game_time.sliderReleased.connect(
-            lambda: print(f"Game duration changed to {self.game_duration} seconds")
-        )
         set_game_time.setStyleSheet("""
             QSlider::groove:horizontal {
                 height: 16px;
@@ -413,12 +424,13 @@ class WhackAMoleWindow(QMainWindow):
         slider_layout.addWidget(self.display_game_duration)
         slider_layout.setContentsMargins(40, 0, 40, 0)
 
-        settings_layout.addWidget(return_button, alignment=Qt.AlignmentFlag.AlignCenter)
         settings_layout.addLayout(mole_count_layout)
         settings_layout.addSpacing(200)
         settings_layout.addLayout(grid_setting_layout)
         settings_layout.addSpacing(200)
         settings_layout.addLayout(slider_layout)
+        settings_layout.addSpacing(50)
+        settings_layout.addWidget(return_button, alignment=Qt.AlignmentFlag.AlignCenter)
         settings_layout.setContentsMargins(50, 50, 50, 150)
 
     def update_grid_size(self, index):
@@ -428,7 +440,7 @@ class WhackAMoleWindow(QMainWindow):
         automatically reduces mole_count to leave
         at least one hole empty.
         """
-        self.grid_size = index + CONVERSION_CONSTANT
+        self.grid_size = index + INDEX_TO_GRID
         self.hole_size = (
             GRID_AREA_SIZE - (self.grid_size - 1) * GRID_SPACING
         ) // self.grid_size
@@ -447,7 +459,7 @@ class WhackAMoleWindow(QMainWindow):
             button = item.widget()
 
             if button is not None:
-                button.deleteLater()
+                button.deleteLater() # gets deleted in the next event loop
 
         self.buttons = []
         # creates a grid_size x grid_size grid of clickable holes, giving equal space
@@ -469,7 +481,6 @@ class WhackAMoleWindow(QMainWindow):
                 button.clicked.connect(self.whack)
         self.grid_layout.activate()
         self.grid_container.adjustSize() # container accomodates to the button grid instead of otherwise vice versa
-        print(f"Grid size set to {self.grid_size}x{self.grid_size}")
 
     def change_game_duration(self, value):
         """Settings related helper function."""
@@ -485,11 +496,11 @@ class WhackAMoleWindow(QMainWindow):
         try:
             value = int(self.input_mole_count.text()) # tries to convert string input into integer
             self.input_mole_count.clear()
-            if value <= 0: # if input is non-positive, pass
+            if value <= 0: # if input is non-positive, reject
                 self.input_mole_count.setPlaceholderText(
                     "Moles must be a positive integer."
                 )
-            elif value >= (self.grid_size ** 2): # if input is greater or equal to total holes, pass
+            elif value >= self.grid_size ** 2: # preserves at least one hole for mole movement
                 self.input_mole_count.setPlaceholderText(
                     f"Moles must be at least one less than total holes ({self.grid_size ** 2})."
                 )
@@ -499,7 +510,7 @@ class WhackAMoleWindow(QMainWindow):
                     f"Changed mole count to {value}"
                 )
                 self.display_mole_count.setText(f"Mole: {self.mole_count}")
-        except ValueError: # if input is a string, float, or list, pass
+        except ValueError: # Handles non-convertable inputs
             self.input_mole_count.clear()
             self.input_mole_count.setPlaceholderText("Invalid integer")
 
@@ -601,21 +612,20 @@ class WhackAMoleWindow(QMainWindow):
         """
         self.game_id += 1
         self.clear_all_moles()
+        self.stop_previous_game_timers()
 
-        self.mole_escaped = 0
+        self.mole_missed = 0
         self.empty_hits = 0
         self.successful_hits = 0
         self.score_ui.setText(f"Score: {self.successful_hits}")
-        self.display_time = self.game_duration
         self.timer_ui.setText("Get Ready")
+        self.display_time = self.game_duration
 
-        self.pages.setCurrentWidget(self.game_widget)
         self.overlay.hide()
+        self.pages.setCurrentWidget(self.game_widget)
 
-        """
-        Forces a widget property update or geometry check /after/
-        the layout has finished calculating positions instead of immediately
-        """
+        #Forces a widget property update or geometry check /after/
+        #the layout has finished calculating positions instead of immediately
         QTimer.singleShot(0, self.resize_overlay)
 
         game_id = self.game_id
@@ -625,11 +635,15 @@ class WhackAMoleWindow(QMainWindow):
             PREPARATION_DELAY,
             lambda: (
                 self.run_game_instance()
-                if game_id == self.game_id
+                if game_id == self.game_id # avoids stale callback after timer fires
                 else None
             )
-
         )
+
+    def stop_previous_game_timers(self):
+        """Helper function."""
+        self.countdown_timer.stop()
+        self.spawn_timer.stop()
 
     def resize_overlay(self):
         """Helper that recalculates overlay's geometry on start up and each resizing event."""
@@ -650,9 +664,9 @@ class WhackAMoleWindow(QMainWindow):
 
     def run_game_instance(self):
         """Starts game, initiates moles, spawns a mole sequentially at staggered intervals from existing queue."""
-        self.timer_ui.setText(f"Time: {self.game_duration}s")
-
+        self.mole_index = 0
         self.mole_queue = []
+        self.mole_tokens = {}
         for i in range(self.mole_count):
             self.mole_queue.append(f"MOLE{i}")
 
@@ -666,13 +680,8 @@ class WhackAMoleWindow(QMainWindow):
             )
         )
 
+        self.timer_ui.setText(f"Time: {self.game_duration}s")
         self.countdown_timer.start(1000)
-
-        self.mole_index = 0
-
-        self.spawn_timer = QTimer(self)
-        self.spawn_timer.setSingleShot(True)
-        self.spawn_timer.timeout.connect(self.next_mole)
 
         self.start_next()
 
@@ -686,15 +695,19 @@ class WhackAMoleWindow(QMainWindow):
 
     def whack(self):
         """
-        When the mole is whacked, updates score,
-        moves mole to a different hole, and reset mole movement.
+        Updates score,
+        moves a hit mole, reset mole movement, or record an empty click.
         """
         button = self.sender()
         if button.text() != "":
             mole = button.text()
-            self.mole_move(button, mole, self.game_id, is_missed=False)
+            self.mole_tokens[mole] += 1
+            token = self.mole_tokens[mole]
+
+            self.mole_move(
+                button, mole, self.game_id, token, is_missed=False
+            )
             self.whack_effect(button, is_hit=True)
-            button.setText("")
             self.successful_hits += 1
             self.score_ui.setText(f"Score: {self.successful_hits}")
         else:
@@ -702,15 +715,16 @@ class WhackAMoleWindow(QMainWindow):
             self.whack_effect(button)
 
     def whack_effect(self, button, is_hit=False):
-        """Performs click animation corresponding to whack(). Detects if a mole was inside and changes colour."""
+        """Performs click animation corresponding to whack(). If a mole was inside, changes colour."""
         border_style = "10px solid #39fc03" if is_hit else "9px solid #DFE0F2"
+
         button.setStyleSheet(
             self.mole_hole_style() + f"""border: {border_style}"""
         )
         QTimer.singleShot(
             BUTTON_ANIMATION_DELAY,
             lambda: button.setStyleSheet(
-               self.mole_hole_style()
+                self.mole_hole_style()
             )
         )
 
@@ -720,13 +734,14 @@ class WhackAMoleWindow(QMainWindow):
         if max mole count has not been reached.
         """
         if self.mole_index < len(self.mole_queue):
-            delay = random.randint(1, 4) * 250
+            delay = random.randint(1, 4) * 350
             self.spawn_timer.start(delay)
         else:
             self.spawn_timer.stop()
 
     def next_mole(self):
         """Calls for next mole if max mole hasn't been reached."""
+
         mole_num = self.mole_queue[self.mole_index]
 
         self.create_moles(mole_num)
@@ -738,29 +753,33 @@ class WhackAMoleWindow(QMainWindow):
         """
         Displays mole text on a hole, and schedules its movement.
         """
-        empty_buttons = [button for button in self.buttons if button.text() == ""]  # vacancy condition for spawning a mole
+        empty_buttons = [
+            button for button in self.buttons if button.text() == ""
+        ]
 
         if not empty_buttons:
             return # No empty hole to place this mole
 
-        vacancy = random.choice(empty_buttons)  # picks a random valid location to spawn the mole
+        vacancy = random.choice(empty_buttons)
         vacancy.setText(mole_num)
-
-        print(f"Created {mole_num}")
+        self.mole_tokens[mole_num] = 0
 
         move_time = random.randint(MOLE_SPEED_MIN, MOLE_SPEED_MAX)
-        current_game = self.game_id
+
+        game_id = self.game_id
+        token = self.mole_tokens[mole_num]
 
         QTimer.singleShot(
             move_time,
             lambda: self.mole_move(
                 vacancy,
                 mole_num,
-                current_game,
+                game_id,
+                token
             )
         ) # code for forcing mole to move after a set time
 
-    def mole_move(self, button, which_mole, game_id, is_missed=True):
+    def mole_move(self, button, which_mole, game_id, token, is_missed=True):
         """
         Moves mole to an empty hole. \n
         The is_missed argument detects a timer-driven mole move and counts it as
@@ -772,65 +791,65 @@ class WhackAMoleWindow(QMainWindow):
         if button.text() != which_mole: # ignore stale callback
             return
 
+        if token != self.mole_tokens.get(which_mole):
+            return
+
         empty_buttons = [
             btn for btn in self.buttons
             if btn.text() == ""
             ]  # checks for all empty locations that a mole can move to.
 
         if not empty_buttons:
-            """
-            No destination is available for this mole
-            """
+            # No destination is available for this mole
             return
 
         move_time = random.randint(MOLE_SPEED_MIN, MOLE_SPEED_MAX)
+
         button.setText("")
-        vacancy = random.choice(empty_buttons)  # checks for a vacant button to move the mole
+        vacancy = random.choice(empty_buttons)
         vacancy.setText(which_mole)
 
         if is_missed: # tallys mole move without being hit
-            self.mole_escaped += 1
+            self.mole_missed += 1
 
-        current_game = self.game_id
-        QTimer.singleShot( # schedules mole for next move. Stale callbacks ignroed
+        game_id = self.game_id
+        self.mole_tokens[which_mole] += 1
+        updated_token = self.mole_tokens[which_mole]
+
+        QTimer.singleShot( # next callback is only valid for this "token" version
             move_time,
-            lambda: self.mole_move(vacancy, which_mole, current_game)
+            lambda: self.mole_move(
+                vacancy, which_mole, game_id, updated_token
+            )
         )
 
     def end_game_instance(self):
         """
-        Composite function that calls appropriate functions
-        when a game is scheduled to end.
+        Finalises the game, saves the result, and displays the endscreen.
         """
+        self.game_id += 1 # Invalidates old timer callbacks
         self.clear_all_moles()
+
         self.assess_score()
         self.evaluate_rank()
         self.append_score()
-        self.toggle_endscreen()
+        self.show_endscreen()
+        self.stop_previous_game_timers()
 
-    def toggle_endscreen(self):
+    def show_endscreen(self):
         self.overlay.label.setText(f"Rank: {self.rank}")
         self.overlay.score_label.setText(f"Score: {self.successful_hits}")
 
-        if self.overlay.isVisible():
-            self.overlay.hide()
-        else:
-            """
-            When the game ends, the screen instantly pops up, and if the player was clicking the wrong area,
-            they could undesirably exit the endscreen, so both buttons are locked for 0.75 seconds on show
-            to give them enough reaction time.
-            """
-            self.overlay.again_button.setDisabled(True)
-            self.overlay.home_button.setDisabled(True)
-            self.overlay.show()
-            QTimer.singleShot(
-                END_SCREEN_BUTTON_DELAY,
-                lambda: self.overlay.again_button.setDisabled(False)
-            )
-            QTimer.singleShot(
-                END_SCREEN_BUTTON_DELAY,
-                lambda: self.overlay.home_button.setDisabled(False)
-            )
+        # briefly disables both buttons to prevent accidental clicks as overlay appears
+
+        self.overlay.again_button.setDisabled(True)
+        self.overlay.home_button.setDisabled(True)
+        self.overlay.show()
+        QTimer.singleShot(END_SCREEN_BUTTON_DELAY, enable_buttons)
+
+        def enable_buttons():
+            self.overlay.again_button.setDisabled(False)
+            self.overlay.home_button.setDisabled(False)
 
     def clear_all_moles(self):
         for button in self.buttons:
@@ -844,13 +863,13 @@ class WhackAMoleWindow(QMainWindow):
         Composite Accuracy (%) = hits / clicks * 0.3 + hits / (hits + escaped) * 0.7
         """
         attempts = self.successful_hits + self.empty_hits
-        total_mole_movements = self.successful_hits + self.mole_escaped
+        total_mole_movements = self.successful_hits + self.mole_missed
 
         if total_mole_movements == 0: #prevents ZeroDivisionError
             self.composite_accuracy = -1 # marks -1 if no mole movement occurs.
             return
 
-        if attempts == 0: # prevents a second ZeroDivisionError
+        if attempts == 0: #prevents second ZeroDivision Error
             precision_accuracy = 0 # Precision is counted as 0 if no hits were attempted
         else:
             precision_accuracy = (self.successful_hits / attempts) * 100
@@ -889,7 +908,7 @@ class WhackAMoleWindow(QMainWindow):
             f"Finished in {self.game_duration} seconds;\n"
             f"Score: {self.successful_hits};\n"
             f"Missed Clicks: {self.empty_hits};\n"
-            f"Missed Moles: {self.mole_escaped};\n"
+            f"Missed Moles: {self.mole_missed};\n"
             f"Accuracy: {round(self.composite_accuracy, 1)}%;\n"
             f"Rank: {self.rank}\n\n"
         )
@@ -899,12 +918,12 @@ class WhackAMoleWindow(QMainWindow):
             with open("score.txt", "a", encoding="utf-8") as file:
                 # Called only when a game finishes normally
                 file.write(result)
-        except OSError: # handles file access or write failures
-            print(f"Could not save score: {OSError}")
+        except OSError as error: # handles file access or write failures
+            print(f"Could not save score: {error}")
 
     def resizeEvent(self, event):
+        """Recalculates overlay geometry based off window size"""
         super().resizeEvent(event)
-        # Recalculates overlay geometry based off window size
         if hasattr(self, "overlay"):
             self.resize_overlay()
 
