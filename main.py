@@ -294,7 +294,7 @@ class WhackAMoleWindow(QMainWindow):
         self.grid_container = QWidget() # Keeps button grid centred independent of root layouts
         self.grid_layout = QGridLayout(self.grid_container)
         self.grid_layout.setContentsMargins(0, 0, 0, 0)
-        self.grid_layout.setSpacing(10)
+        self.grid_layout.setSpacing(GRID_SPACING)
         self.update_grid_size(self.grid_size - INDEX_TO_GRID)  # initial grid layout load
 
         self.game_layout = QVBoxLayout(self.game_widget)
@@ -356,10 +356,10 @@ class WhackAMoleWindow(QMainWindow):
         )
 
         self.set_grid_size = QComboBox()
-        #The grid setup accepts 3x3, 4x4, 5x5
-        #But also works with slightly bigger numbers
+        #The grid setup is made to sustain 3x3, 4x4, 5x5
+        #But slightly larger dimensions also work
         self.set_grid_size.addItems(
-            ["3x3", "4x4", "5x5", "6x6 (experimental)", "7x7 (experimental)"]
+            ["3x3", "4x4", "5x5", "6x6", "7x7"]
         )
         # 3x3 grid size is index 0, 4x4 is 1, etc.
         self.set_grid_size.setCurrentIndex(self.grid_size - INDEX_TO_GRID)
@@ -641,7 +641,7 @@ class WhackAMoleWindow(QMainWindow):
         )
 
     def stop_previous_game_timers(self):
-        """Helper function."""
+        """Stops stale scheduled callbacks."""
         self.countdown_timer.stop()
         self.spawn_timer.stop()
 
@@ -665,10 +665,10 @@ class WhackAMoleWindow(QMainWindow):
     def run_game_instance(self):
         """Starts game, initiates moles, spawns a mole sequentially at staggered intervals from existing queue."""
         self.mole_index = 0
-        self.mole_queue = []
+        self.mole_queue = [
+            f"MOLE{i}" for i in range(self.mole_count)
+        ]
         self.mole_tokens = {}
-        for i in range(self.mole_count):
-            self.mole_queue.append(f"MOLE{i}")
 
         game_id = self.game_id
         QTimer.singleShot( # game_id check ensures that game instance does not end prematurely
@@ -680,7 +680,7 @@ class WhackAMoleWindow(QMainWindow):
             )
         )
 
-        self.timer_ui.setText(f"Time: {self.game_duration}s")
+        self.timer_ui.setText(f"Time: {self.display_time}s")
         self.countdown_timer.start(1000)
 
         self.start_next()
@@ -734,14 +734,13 @@ class WhackAMoleWindow(QMainWindow):
         if max mole count has not been reached.
         """
         if self.mole_index < len(self.mole_queue):
-            delay = random.randint(1, 4) * 350
+            delay = random.randint(1, 4) * 250
             self.spawn_timer.start(delay)
         else:
             self.spawn_timer.stop()
 
     def next_mole(self):
         """Calls for next mole if max mole hasn't been reached."""
-
         mole_num = self.mole_queue[self.mole_index]
 
         self.create_moles(mole_num)
@@ -812,7 +811,6 @@ class WhackAMoleWindow(QMainWindow):
         if is_missed: # tallys mole move without being hit
             self.mole_missed += 1
 
-        game_id = self.game_id
         self.mole_tokens[which_mole] += 1
         updated_token = self.mole_tokens[which_mole]
 
@@ -829,27 +827,31 @@ class WhackAMoleWindow(QMainWindow):
         """
         self.game_id += 1 # Invalidates old timer callbacks
         self.clear_all_moles()
+        self.timer_ui.setText("Time: 0s")
+        self.stop_previous_game_timers()
 
         self.assess_score()
         self.evaluate_rank()
         self.append_score()
         self.show_endscreen()
-        self.stop_previous_game_timers()
+
 
     def show_endscreen(self):
         self.overlay.label.setText(f"Rank: {self.rank}")
         self.overlay.score_label.setText(f"Score: {self.successful_hits}")
 
         # briefly disables both buttons to prevent accidental clicks as overlay appears
-
         self.overlay.again_button.setDisabled(True)
         self.overlay.home_button.setDisabled(True)
         self.overlay.show()
-        QTimer.singleShot(END_SCREEN_BUTTON_DELAY, enable_buttons)
 
         def enable_buttons():
             self.overlay.again_button.setDisabled(False)
             self.overlay.home_button.setDisabled(False)
+        QTimer.singleShot(
+            END_SCREEN_BUTTON_DELAY,
+            enable_buttons
+        )
 
     def clear_all_moles(self):
         for button in self.buttons:
