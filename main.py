@@ -479,8 +479,6 @@ class WhackAMoleWindow(QMainWindow):
                 self.grid_layout.addWidget(button, row, col)
                 self.buttons.append(button)
                 button.clicked.connect(self.whack)
-        self.grid_layout.activate()
-        self.grid_container.adjustSize() # container accomodates to the button grid instead of otherwise vice versa
 
     def change_game_duration(self, value):
         """Settings related helper function."""
@@ -736,8 +734,6 @@ class WhackAMoleWindow(QMainWindow):
         if self.mole_index < len(self.mole_queue):
             delay = random.randint(1, 4) * 250
             self.spawn_timer.start(delay)
-        else:
-            self.spawn_timer.stop()
 
     def next_mole(self):
         """Calls for next mole if max mole hasn't been reached."""
