@@ -25,9 +25,10 @@ from PyQt6.QtWidgets import (
 )
 
 DEFAULT_MOLE_COUNT = 2  # max moles that can spawn per game, can be changed
-DEFAULT_GRID_SIZE = 4  # default 4x4; can be changed to 3x3 or 5x5 in settings
+DEFAULT_GRID_SIZE = 4  # default 4x4; can be changed from 3x3 to 7x7 in settings
 MOLE_SPEED_MIN = 900  # mole moves earliest after this many ms
 MOLE_SPEED_MAX = 2000  # mole moves latest after this many ms
+MOLE_SPAWN_INTERVAL = 250 # ms determines time it takes for mole first spawned
 DEFAULT_GAME_DURATION = 15  # in seconds
 GRID_AREA_SIZE = 800 # px
 GRID_SPACING = 10 # px
@@ -37,7 +38,7 @@ PRECISION_WEIGHTING = 1 - REFLEX_WEIGHTING # set remaining weight to precision a
 PREPARATION_DELAY = 2000 # milliseconds
 END_SCREEN_BUTTON_DELAY = 750 # ms
 BUTTON_ANIMATION_DELAY = 75 # ms
-MIN_GAME_DURATION = 15 # seconds
+MIN_GAME_DURATION = 5 # seconds
 MAX_GAME_DURATION = 60 # seconds
 
 
@@ -86,7 +87,7 @@ class EndScreenWidget(QWidget):
         self.again_button = QPushButton("Play Again")
         self.again_button.clicked.connect(play_again_callback)
 
-        for button in (self.home_button, self.again_button):
+        for button in (self.home_button, self.again_button): # same attributes are set in a for loop
             button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             button.setMinimumHeight(120)
             button.setStyleSheet(
@@ -161,7 +162,8 @@ class WhackAMoleWindow(QMainWindow):
         self.game_duration = DEFAULT_GAME_DURATION
         self.mole_count = DEFAULT_MOLE_COUNT
         self.grid_size = DEFAULT_GRID_SIZE
-        # Below variables are defined inside __init__ first to prevent attribute errors.
+        # Below variables are defined inside __init__ first
+        # to prevent attribute errors.
         self.hole_size = None # becomes a derived value later
         self.buttons = []
         self.composite_accuracy = 0
@@ -173,8 +175,10 @@ class WhackAMoleWindow(QMainWindow):
         self.mole_index = 0
         self.rank = None
         # Checker for anything that calls the create_mole, mole_move, and QTimer functions;
-        # Once a new game starts, prevents any zombie callbacks from creating complications
-        # especially ones that require a recursive QTimer.
+        # Once a game ends/restarts, prevents stale callbacks from creating complications
+        # such as singleShot QTimers. This check is currently small impact
+        # as you cannot restart game mid-game, but if the feature is developed in the future
+        # this can also safely handle mid-game interrupts.
         self.game_id = 0
         #Similar implementation as self.game_id, instead storing individual mole "tokens" that rejects
         #old mole_move() callbacks, ensuring only one timer fires a time, and prevents unpredictable movements.
@@ -356,8 +360,7 @@ class WhackAMoleWindow(QMainWindow):
         )
 
         self.set_grid_size = QComboBox()
-        #The grid setup is made to sustain 3x3, 4x4, 5x5
-        #But slightly larger dimensions also work
+        # The grid setup sustains 3x3 to 7x7 consistently
         self.set_grid_size.addItems(
             ["3x3", "4x4", "5x5", "6x6", "7x7"]
         )
@@ -732,7 +735,7 @@ class WhackAMoleWindow(QMainWindow):
         if max mole count has not been reached.
         """
         if self.mole_index < len(self.mole_queue):
-            delay = random.randint(1, 4) * 250
+            delay = random.randint(1, 4) * MOLE_SPAWN_INTERVAL
             self.spawn_timer.start(delay)
 
     def next_mole(self):
@@ -830,7 +833,6 @@ class WhackAMoleWindow(QMainWindow):
         self.evaluate_rank()
         self.append_score()
         self.show_endscreen()
-
 
     def show_endscreen(self):
         self.overlay.label.setText(f"Rank: {self.rank}")
