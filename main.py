@@ -38,7 +38,7 @@ PRECISION_WEIGHTING = 1 - REFLEX_WEIGHTING # set remaining weight to precision a
 PREPARATION_DELAY = 2000 # milliseconds
 END_SCREEN_BUTTON_DELAY = 750 # ms
 BUTTON_ANIMATION_DELAY = 75 # ms
-MIN_GAME_DURATION = 5 # seconds
+MIN_GAME_DURATION = 15 # seconds
 MAX_GAME_DURATION = 60 # seconds
 
 
@@ -167,12 +167,12 @@ class WhackAMoleWindow(QMainWindow):
         self.hole_size = None # becomes a derived value later
         self.buttons = []
         self.composite_accuracy = 0
-        self.mole_missed = 0
+        self.mole_missed = 0 # a mole moves without being whacked
         self.empty_hits = 0
         self.successful_hits = 0
         self.now = None # gets datetime in a later function.
-        self.mole_queue = []
-        self.mole_index = 0
+        self.mole_queue = [] # creates a list of moles based on mole count
+        self.mole_index = 0 # checks to spawn next mole in mole_queue
         self.rank = None
         # Checker for anything that calls the create_mole, mole_move, and QTimer functions;
         # Once a game ends/restarts, prevents stale callbacks from creating complications
@@ -919,7 +919,7 @@ class WhackAMoleWindow(QMainWindow):
                 # Called only when a game finishes normally
                 file.write(result)
         except OSError as error: # handles file access or write failures
-            print(f"Could not save score: {error}")
+            print(f"Could not save results: {error}")
 
     def resizeEvent(self, event):
         """Recalculates overlay geometry based off window size"""
